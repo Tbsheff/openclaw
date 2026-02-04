@@ -5,6 +5,7 @@ import type { ReplyDispatcher, ReplyDispatchKind } from "./reply-dispatcher.js";
 import { resolveSessionAgentId } from "../../agents/agent-scope.js";
 import { loadSessionStore, resolveStorePath } from "../../config/sessions.js";
 import { logVerbose } from "../../globals.js";
+import { isClaudeHooksEnabled, runUserPromptSubmitHooks } from "../../hooks/claude-style/index.js";
 import { isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
 import {
   logMessageProcessed,
@@ -284,6 +285,70 @@ export async function dispatchReplyFromConfig(params: {
       recordProcessed("completed", { reason: "fast_abort" });
       markIdle("message_completed");
       return { queuedFinal, counts };
+    }
+
+    // UserPromptSubmit hook: can block or modify prompt content
+    // Covers ALL channels (WhatsApp, Telegram, CLI, HTTP, etc.)
+    if (isClaudeHooksEnabled()) {
+      const promptContent =
+        typeof ctx.BodyForCommands === "string"
+          ? ctx.BodyForCommands
+          : typeof ctx.RawBody === "string"
+            ? ctx.RawBody
+            : typeof ctx.Body === "string"
+              ? ctx.Body
+              : "";
+
+      if (promptContent) {
+        const hookResult = await runUserPromptSubmitHooks({
+          session_id: ctx.SessionKey,
+          prompt: promptContent,
+          channel: (ctx.Surface ?? ctx.Provider ?? "").toLowerCase(),
+          cwd: process.cwd(),
+        });
+
+        if (hookResult.decision === "deny") {
+          // Block the message with an error response
+          const blockPayload = {
+            text: hookResult.reason ?? "Message blocked by hook",
+          } satisfies ReplyPayload;
+          let queuedFinal = false;
+          if (shouldRouteToOriginating && originatingChannel && originatingTo) {
+            const result = await routeReply({
+              payload: blockPayload,
+              channel: originatingChannel,
+              to: originatingTo,
+              sessionKey: ctx.SessionKey,
+              accountId: ctx.AccountId,
+              threadId: ctx.MessageThreadId,
+              cfg,
+            });
+            queuedFinal = result.ok;
+          } else {
+            queuedFinal = dispatcher.sendFinalReply(blockPayload);
+          }
+          await dispatcher.waitForIdle();
+          const counts = dispatcher.getQueuedCounts();
+          recordProcessed("completed", { reason: "hook_blocked" });
+          markIdle("message_completed");
+          return { queuedFinal, counts };
+        }
+
+        // Apply modified prompt if provided
+        if (hookResult.modifiedPrompt && hookResult.modifiedPrompt !== promptContent) {
+          // Modify the context with the new prompt
+          if (typeof ctx.BodyForCommands === "string") {
+            ctx.BodyForCommands = hookResult.modifiedPrompt;
+          }
+          if (typeof ctx.RawBody === "string") {
+            ctx.RawBody = hookResult.modifiedPrompt;
+          }
+          if (typeof ctx.Body === "string") {
+            ctx.Body = hookResult.modifiedPrompt;
+          }
+          logVerbose(`dispatch-from-config: UserPromptSubmit hook modified prompt`);
+        }
+      }
     }
 
     // Track accumulated block text for TTS generation after streaming completes.

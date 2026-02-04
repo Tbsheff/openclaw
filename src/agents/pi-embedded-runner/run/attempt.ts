@@ -7,6 +7,7 @@ import os from "node:os";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
 import { resolveHeartbeatPrompt } from "../../../auto-reply/heartbeat.js";
 import { resolveChannelCapabilities } from "../../../config/channel-capabilities.js";
+import { isClaudeHooksEnabled, runStopHooks } from "../../../hooks/claude-style/index.js";
 import { getMachineDisplayName } from "../../../infra/machine-name.js";
 import { MAX_IMAGE_BYTES } from "../../../media/constants.js";
 import { getGlobalHookRunner } from "../../../plugins/hook-runner-global.js";
@@ -759,78 +760,126 @@ export async function runEmbeddedAttempt(
           );
         }
 
-        try {
-          // Detect and load images referenced in the prompt for vision-capable models.
-          // This eliminates the need for an explicit "view" tool call by injecting
-          // images directly into the prompt when the model supports it.
-          // Also scans conversation history to enable follow-up questions about earlier images.
-          const imageResult = await detectAndLoadPromptImages({
-            prompt: effectivePrompt,
-            workspaceDir: effectiveWorkspace,
-            model: params.model,
-            existingImages: params.images,
-            historyMessages: activeSession.messages,
-            maxBytes: MAX_IMAGE_BYTES,
-            // Enforce sandbox path restrictions when sandbox is enabled
-            sandboxRoot: sandbox?.enabled ? sandbox.workspaceDir : undefined,
-          });
+        // Detect and load images referenced in the prompt for vision-capable models.
+        // This eliminates the need for an explicit "view" tool call by injecting
+        // images directly into the prompt when the model supports it.
+        // Also scans conversation history to enable follow-up questions about earlier images.
+        const imageResult = await detectAndLoadPromptImages({
+          prompt: effectivePrompt,
+          workspaceDir: effectiveWorkspace,
+          model: params.model,
+          existingImages: params.images,
+          historyMessages: activeSession.messages,
+          maxBytes: MAX_IMAGE_BYTES,
+          // Enforce sandbox path restrictions when sandbox is enabled
+          sandboxRoot: sandbox?.enabled ? sandbox.workspaceDir : undefined,
+        });
 
-          // Inject history images into their original message positions.
-          // This ensures the model sees images in context (e.g., "compare to the first image").
-          const didMutate = injectHistoryImagesIntoMessages(
-            activeSession.messages,
-            imageResult.historyImagesByIndex,
-          );
-          if (didMutate) {
-            // Persist message mutations (e.g., injected history images) so we don't re-scan/reload.
-            activeSession.agent.replaceMessages(activeSession.messages);
-          }
-
-          cacheTrace?.recordStage("prompt:images", {
-            prompt: effectivePrompt,
-            messages: activeSession.messages,
-            note: `images: prompt=${imageResult.images.length} history=${imageResult.historyImagesByIndex.size}`,
-          });
-
-          const shouldTrackCacheTtl =
-            params.config?.agents?.defaults?.contextPruning?.mode === "cache-ttl" &&
-            isCacheTtlEligibleProvider(params.provider, params.modelId);
-          if (shouldTrackCacheTtl) {
-            appendCacheTtlTimestamp(sessionManager, {
-              timestamp: Date.now(),
-              provider: params.provider,
-              modelId: params.modelId,
-            });
-          }
-
-          // Only pass images option if there are actually images to pass
-          // This avoids potential issues with models that don't expect the images parameter
-          if (imageResult.images.length > 0) {
-            await abortable(activeSession.prompt(effectivePrompt, { images: imageResult.images }));
-          } else {
-            await abortable(activeSession.prompt(effectivePrompt));
-          }
-        } catch (err) {
-          promptError = err;
-        } finally {
-          log.debug(
-            `embedded run prompt end: runId=${params.runId} sessionId=${params.sessionId} durationMs=${Date.now() - promptStartedAt}`,
-          );
+        // Inject history images into their original message positions.
+        // This ensures the model sees images in context (e.g., "compare to the first image").
+        const didMutate = injectHistoryImagesIntoMessages(
+          activeSession.messages,
+          imageResult.historyImagesByIndex,
+        );
+        if (didMutate) {
+          // Persist message mutations (e.g., injected history images) so we don't re-scan/reload.
+          activeSession.agent.replaceMessages(activeSession.messages);
         }
 
-        try {
-          await waitForCompactionRetry();
-        } catch (err) {
-          if (isAbortError(err)) {
-            if (!promptError) {
-              promptError = err;
+        cacheTrace?.recordStage("prompt:images", {
+          prompt: effectivePrompt,
+          messages: activeSession.messages,
+          note: `images: prompt=${imageResult.images.length} history=${imageResult.historyImagesByIndex.size}`,
+        });
+
+        const shouldTrackCacheTtl =
+          params.config?.agents?.defaults?.contextPruning?.mode === "cache-ttl" &&
+          isCacheTtlEligibleProvider(params.provider, params.modelId);
+        if (shouldTrackCacheTtl) {
+          appendCacheTtlTimestamp(sessionManager, {
+            timestamp: Date.now(),
+            provider: params.provider,
+            modelId: params.modelId,
+          });
+        }
+
+        // Stop hook continuation loop
+        // Wraps prompt execution to allow Stop hooks to request continuation
+        let stopRetries = 0;
+        const maxStopRetries = 3;
+        let currentPrompt = effectivePrompt;
+        let currentImages = imageResult.images;
+
+        while (true) {
+          try {
+            // Only pass images option if there are actually images to pass
+            // This avoids potential issues with models that don't expect the images parameter
+            if (currentImages.length > 0) {
+              await abortable(activeSession.prompt(currentPrompt, { images: currentImages }));
+            } else {
+              await abortable(activeSession.prompt(currentPrompt));
             }
-          } else {
-            throw err;
+          } catch (err) {
+            promptError = err;
+            break;
+          } finally {
+            log.debug(
+              `embedded run prompt end: runId=${params.runId} sessionId=${params.sessionId} durationMs=${Date.now() - promptStartedAt}`,
+            );
           }
+
+          try {
+            await waitForCompactionRetry();
+          } catch (err) {
+            if (isAbortError(err)) {
+              if (!promptError) {
+                promptError = err;
+              }
+            } else {
+              throw err;
+            }
+            break;
+          }
+
+          messagesSnapshot = activeSession.messages.slice();
+
+          // Stop hook check - fires after prompt completes
+          if (!isClaudeHooksEnabled() || stopRetries >= maxStopRetries) {
+            break; // Exit loop, continue to return
+          }
+
+          // Get last assistant response for hook context
+          const lastAssistantMsg = messagesSnapshot
+            .slice()
+            .toReversed()
+            .find((m) => m.role === "assistant");
+          const lastResponse =
+            lastAssistantMsg?.content && typeof lastAssistantMsg.content === "string"
+              ? lastAssistantMsg.content
+              : undefined;
+
+          const stopResult = await runStopHooks({
+            session_id: params.sessionKey ?? params.sessionId,
+            cwd: process.cwd(),
+            last_response: lastResponse,
+          });
+
+          if (stopResult.decision !== "deny") {
+            break; // Hook allows stop
+          }
+
+          // Hook denies - continue with new prompt
+          stopRetries++;
+          const reason = stopResult.continuation_message ?? stopResult.reason ?? "Continue working";
+          currentPrompt = `[System: ${reason}]`;
+          currentImages = []; // Images only on first prompt
+          log.debug(`Stop hook denied, continuing: retry=${stopRetries} reason=${reason}`);
         }
 
-        messagesSnapshot = activeSession.messages.slice();
+        // Ensure messagesSnapshot is set even if loop broke early
+        if (messagesSnapshot.length === 0) {
+          messagesSnapshot = activeSession.messages.slice();
+        }
         sessionIdUsed = activeSession.sessionId;
         cacheTrace?.recordStage("session:after", {
           messages: messagesSnapshot,

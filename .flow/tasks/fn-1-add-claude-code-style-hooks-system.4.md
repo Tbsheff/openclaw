@@ -37,14 +37,24 @@ function sanitizeForHook(result: unknown): unknown {
 
 ## Acceptance
 
-- [ ] `runPostToolUseHooks()` fires after successful tool execution
-- [ ] `runPostToolUseFailureHooks()` fires after failed tool execution
-- [ ] `sanitizeForHook()` handles binary data, large strings, circular refs
-- [ ] Tool results **sanitized** before passing to hooks
-- [ ] Hook receives tool_name, tool_input, sanitized tool_result (or tool_error)
-- [ ] Hooks run async (fire-and-forget, don't block agent)
-- [ ] Multiple hooks can run in parallel
-- [ ] Errors logged but don't crash agent
-- [ ] Unit tests for sanitization (binary, large, circular)
-- [ ] Integration test: PostToolUse fires after Write tool
-- [ ] Integration test: PostToolUseFailure fires on tool error
+- [x] `runPostToolUseHooks()` fires after successful tool execution
+- [x] `runPostToolUseFailureHooks()` fires after failed tool execution
+- [x] `sanitizeForHook()` handles binary data, large strings, circular refs
+- [x] Tool results **sanitized** before passing to hooks
+- [x] Hook receives tool_name, tool_input, sanitized tool_result (or tool_error)
+- [x] Hooks run async (fire-and-forget, don't block agent)
+- [x] Multiple hooks can run in parallel
+- [x] Errors logged but don't crash agent
+- [x] Unit tests for sanitization (binary, large, circular)
+- [x] Integration test: PostToolUse fires after Write tool
+- [x] Integration test: PostToolUseFailure fires on tool error
+
+## Done summary
+
+- Task completed
+
+## Evidence
+
+- Commits:
+- Tests:
+- PRs:

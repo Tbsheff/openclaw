@@ -81,3 +81,17 @@ export {
   type PostToolUseHookInput,
   type PostToolUseFailureHookInput,
 } from "./hooks/post-tool-use.js";
+
+export {
+  runUserPromptSubmitHooks,
+  hasUserPromptSubmitHooks,
+  type UserPromptSubmitHookInput,
+  type UserPromptSubmitHookResult,
+} from "./hooks/user-prompt.js";
+
+export {
+  runStopHooks,
+  hasStopHooks,
+  type StopHookInput,
+  type StopHookResult,
+} from "./hooks/stop.js";

@@ -1,6 +1,6 @@
 Goal (incl. success criteria):
 
-- Re-review updated PreToolUse hook integration changes and deliver Carmack-level verdict.
+- Re-review updated PostToolUse/PostToolUseFailure hook integration + sanitization changes and deliver Carmack-level verdict.
 
 Constraints/Assumptions:
 
@@ -19,8 +19,7 @@ State:
 Done:
 
 - Read continuity ledger at start of turn.
-- Re-read updated files: `.flow/tasks/fn-1-add-claude-code-style-hooks-system.2.md`, `src/agents/pi-tools.before-tool-call.ts`, `src/hooks/claude-style/executor.ts`, `src/hooks/claude-style/hooks/pre-tool-use.ts`, `src/hooks/claude-style/hooks/pre-tool-use.test.ts`.
-- Ran `node node_modules/vitest/vitest.mjs run src/hooks/claude-style/hooks/pre-tool-use.test.ts --config vitest.unit.config.ts` (pass).
+- Re-read updated files for post-tool-use hooks + sanitization.
 
 Now:
 
@@ -37,8 +36,12 @@ Open questions (UNCONFIRMED if needed):
 Working set (files/ids/commands):
 
 - `CONTINUITY.md`
-- `.flow/tasks/fn-1-add-claude-code-style-hooks-system.2.md`
-- `src/agents/pi-tools.before-tool-call.ts`
-- `src/hooks/claude-style/executor.ts`
-- `src/hooks/claude-style/hooks/pre-tool-use.ts`
-- `src/hooks/claude-style/hooks/pre-tool-use.test.ts`
+- `.flow/tasks/fn-1-add-claude-code-style-hooks-system.3.md`
+- `src/agents/pi-embedded-subscribe.handlers.tools.ts`
+- `src/agents/pi-embedded-subscribe.handlers.types.ts`
+- `src/agents/pi-embedded-subscribe.ts`
+- `src/hooks/claude-style/hooks/post-tool-use.ts`
+- `src/hooks/claude-style/hooks/post-tool-use.test.ts`
+- `src/hooks/claude-style/sanitize.ts`
+- `src/hooks/claude-style/sanitize.test.ts`
+- `src/hooks/claude-style/index.ts`
