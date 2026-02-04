@@ -62,8 +62,13 @@ export function matchesPattern(pattern: string, identifier: string): boolean {
   }
 
   // Glob match via picomatch
-  const isMatch = picomatch(pattern);
-  return isMatch(identifier);
+  // Invalid patterns are treated as non-matching (config error logged elsewhere)
+  try {
+    const isMatch = picomatch(pattern);
+    return isMatch(identifier);
+  } catch {
+    return false;
+  }
 }
 
 /**

@@ -287,6 +287,33 @@ describe("runCommandHook", () => {
       output: { received_tool: "Bash" },
     });
   });
+
+  it("counts invalid JSON output towards circuit breaker", async () => {
+    const handler: ClaudeHookCommandHandler = {
+      type: "command",
+      command: ["node", "-e", 'console.log("not valid json")'],
+    };
+    const input: ClaudeHookPreToolUseInput = {
+      hook_event_name: "PreToolUse",
+      tool_name: "test",
+      tool_input: {},
+    };
+    const handlerId = getHandlerId(handler);
+
+    // First two failures
+    await runCommandHook(handler, input);
+    expect(isDisabled(handlerId)).toBe(false);
+    await runCommandHook(handler, input);
+    expect(isDisabled(handlerId)).toBe(false);
+
+    // Third failure should disable
+    const result = await runCommandHook(handler, input);
+    expect(isDisabled(handlerId)).toBe(true);
+    expect(result).toMatchObject({
+      error: true,
+      message: expect.stringContaining("disabled"),
+    });
+  });
 });
 
 // =============================================================================
@@ -333,6 +360,12 @@ describe("matchesPattern", () => {
 
   it("does not match non-matching pattern", () => {
     expect(matchesPattern("Bash", "Read")).toBe(false);
+  });
+
+  it("returns false for invalid glob patterns", () => {
+    // Invalid glob patterns (unbalanced brackets) should not crash
+    expect(matchesPattern("[invalid", "test")).toBe(false);
+    expect(matchesPattern("**[", "test")).toBe(false);
   });
 });
 
