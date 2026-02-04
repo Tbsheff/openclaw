@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  openclaw-hooks-test:
+    build:
+      context: ../..
+      dockerfile: test/hooks-docker/Dockerfile
+    container_name: openclaw-hooks-test
+    environment:
+      - OPENCLAW_CLAUDE_HOOKS=1
+      - NODE_ENV=development
+    volumes:
+      # Mount settings for easy editing
+      - ./settings.json:/root/.openclaw/settings.json:ro
+      # Mount hooks for live editing
+      - ./hooks:/hooks:ro
+      # Persist tool logs
+      - ./logs:/tmp
+    stdin_open: true
+    tty: true
+    working_dir: /app

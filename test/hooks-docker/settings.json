@@ -1,0 +1,42 @@
+{
+  "hooks": {
+    "claude": {
+      "PreToolUse": [
+        {
+          "matcher": "Bash*",
+          "hooks": [
+            {
+              "type": "command",
+              "command": ["/hooks/block-rm.sh"],
+              "timeout": 10
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "matcher": "*",
+          "hooks": [
+            {
+              "type": "command",
+              "command": ["/hooks/log-tools.sh"],
+              "timeout": 5
+            }
+          ]
+        }
+      ],
+      "UserPromptSubmit": [
+        {
+          "matcher": "*",
+          "hooks": [
+            {
+              "type": "command",
+              "command": ["/hooks/require-reason.sh"],
+              "timeout": 5
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
