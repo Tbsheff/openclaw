@@ -60,3 +60,13 @@ Create TypeScript types and Zod schemas for the Claude-style hook system.
 - [ ] Config parsing gated by `OPENCLAW_CLAUDE_HOOKS=1`
 - [ ] Unit tests for schema validation
 - [ ] Exports from `src/hooks/claude-style/index.ts`
+
+## Done summary
+
+Added Claude Code-style hook types and Zod config schemas with all 8 events, discriminated union handlers (command/prompt/agent), and proper protocol field names. Config parsing gated behind OPENCLAW_CLAUDE_HOOKS=1 env var.
+
+## Evidence
+
+- Commits:
+- Tests:
+- PRs:

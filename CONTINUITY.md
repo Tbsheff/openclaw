@@ -20,7 +20,7 @@ Done:
 
 - Read continuity ledger at start of turn.
 - Re-read updated files for Claude-style hooks (config + types + tests + .flow).
-- Identified potential issues: feature-flag gating still validates claude config; hook input/output field names differ from spec.
+- Confirmed potential issues: feature-flag gating still validates claude config; hook input/output field names differ from spec.
 
 Now:
 
