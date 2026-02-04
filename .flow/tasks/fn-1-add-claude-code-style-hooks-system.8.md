@@ -30,3 +30,13 @@ Update documentation with 8 new hook events, feature flag, and limitations.
 - [ ] docs/hooks.md: Stop non-blocking continuation approach noted
 - [ ] docs/hooks.md: Events moved from "Future Events" to "Event Types"
 - [ ] CHANGELOG.md: Entry for Claude-style hooks (behind flag)
+
+## Done summary
+
+Documented Claude Code-style hooks system in docs/hooks.md with all 8 events, feature flag requirement, command handler formats, and implementation notes. Added CHANGELOG entry.
+
+## Evidence
+
+- Commits:
+- Tests:
+- PRs:
