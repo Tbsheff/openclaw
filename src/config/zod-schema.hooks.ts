@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export { ClaudeHooksConfigSchema, isClaudeHooksEnabled } from "../hooks/claude-style/config.js";
+
 export const HookMappingSchema = z
   .object({
     id: z.string().optional(),

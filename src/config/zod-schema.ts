@@ -3,7 +3,13 @@ import { ToolsSchema } from "./zod-schema.agent-runtime.js";
 import { AgentsSchema, AudioSchema, BindingsSchema, BroadcastSchema } from "./zod-schema.agents.js";
 import { ApprovalsSchema } from "./zod-schema.approvals.js";
 import { HexColorSchema, ModelsConfigSchema } from "./zod-schema.core.js";
-import { HookMappingSchema, HooksGmailSchema, InternalHooksSchema } from "./zod-schema.hooks.js";
+import {
+  ClaudeHooksConfigSchema,
+  HookMappingSchema,
+  HooksGmailSchema,
+  InternalHooksSchema,
+  isClaudeHooksEnabled,
+} from "./zod-schema.hooks.js";
 import { ChannelsSchema } from "./zod-schema.providers.js";
 import {
   CommandsSchema,
@@ -302,9 +308,18 @@ export const OpenClawSchema = z
         mappings: z.array(HookMappingSchema).optional(),
         gmail: HooksGmailSchema,
         internal: InternalHooksSchema,
+        claude: ClaudeHooksConfigSchema,
       })
       .strict()
-      .optional(),
+      .optional()
+      .transform((hooks) => {
+        // Gate claude hooks parsing behind feature flag
+        if (hooks?.claude && !isClaudeHooksEnabled()) {
+          const { claude: _, ...rest } = hooks;
+          return rest;
+        }
+        return hooks;
+      }),
     web: z
       .object({
         enabled: z.boolean().optional(),

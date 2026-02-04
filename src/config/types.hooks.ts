@@ -110,6 +110,8 @@ export type InternalHooksConfig = {
   installs?: Record<string, HookInstallRecord>;
 };
 
+import type { ClaudeHooksConfig } from "../hooks/claude-style/types.js";
+
 export type HooksConfig = {
   enabled?: boolean;
   path?: string;
@@ -121,4 +123,6 @@ export type HooksConfig = {
   gmail?: HooksGmailConfig;
   /** Internal agent event hooks */
   internal?: InternalHooksConfig;
+  /** Claude Code-style hooks (gated by OPENCLAW_CLAUDE_HOOKS=1) */
+  claude?: ClaudeHooksConfig;
 };

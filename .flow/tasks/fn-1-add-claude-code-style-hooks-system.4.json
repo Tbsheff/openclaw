@@ -1,0 +1,17 @@
+{
+  "assignee": null,
+  "claim_note": "",
+  "claimed_at": null,
+  "created_at": "2026-02-04T05:38:22.382253Z",
+  "depends_on": [
+    "fn-1-add-claude-code-style-hooks-system.1",
+    "fn-1-add-claude-code-style-hooks-system.2"
+  ],
+  "epic": "fn-1-add-claude-code-style-hooks-system",
+  "id": "fn-1-add-claude-code-style-hooks-system.4",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-1-add-claude-code-style-hooks-system.4.md",
+  "status": "todo",
+  "title": "PostToolUse and PostToolUseFailure hooks",
+  "updated_at": "2026-02-04T05:46:27.864030Z"
+}

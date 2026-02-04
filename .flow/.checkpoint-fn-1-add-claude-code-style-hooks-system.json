@@ -1,0 +1,201 @@
+{
+  "created_at": "2026-02-04T05:40:49.397783Z",
+  "epic": {
+    "data": {
+      "branch_name": "fn-1-add-claude-code-style-hooks-system",
+      "completion_review_status": "unknown",
+      "completion_reviewed_at": null,
+      "created_at": "2026-02-04T05:37:09.585230Z",
+      "default_impl": null,
+      "default_review": null,
+      "default_sync": null,
+      "depends_on_epics": [],
+      "id": "fn-1-add-claude-code-style-hooks-system",
+      "next_task": 1,
+      "plan_review_status": "unknown",
+      "plan_reviewed_at": null,
+      "spec_path": ".flow/specs/fn-1-add-claude-code-style-hooks-system.md",
+      "status": "open",
+      "title": "Add Claude Code-style hooks system",
+      "updated_at": "2026-02-04T05:38:03.716908Z"
+    },
+    "spec": "# Add Claude Code-style Hooks System\n\n## Overview\n\nAdd a rich hook system to OpenClaw that mirrors Claude Code's 12-event hook architecture. This enables users to intercept, modify, and block agent actions via shell scripts, LLM prompts, or subagents.\n\n**Why:** Power users need customization points for security policies (block dangerous commands), workflow automation (auto-lint on write), and agent behavior modification (continue working until tests pass).\n\n## Scope\n\n### In Scope\n- 8 new hook events: PreToolUse, PostToolUse, PostToolUseFailure, UserPromptSubmit, Stop, SubagentStart, SubagentStop, PreCompact\n- 3 handler types: command (shell), prompt (LLM eval), agent (subagent)\n- JSON stdin/stdout protocol with exit code semantics\n- Glob-based tool matchers\n- Settings.json configuration\n- Integration with existing plugin hook infrastructure\n\n### Out of Scope\n- SessionStart/SessionEnd events (use existing `session` internal hook)\n- Notification/PermissionRequest events (not applicable to OpenClaw)\n- GUI hook management (CLI only)\n- Hook marketplace/registry\n\n## Architecture\n\n```mermaid\nflowchart TB\n    subgraph Config [\"Configuration Layer\"]\n        Settings[\"settings.json<br/>hooks.claude section\"]\n        Schema[\"zod-schema.hooks.ts<br/>ClaudeHookConfig\"]\n    end\n\n    subgraph Registry [\"Hook Registry\"]\n        Parser[\"config.ts<br/>parseClaudeHooks()\"]\n        Registry2[\"claude-hook-registry.ts<br/>matchHooks(event, tool?)\"]\n    end\n\n    subgraph Executor [\"Hook Executor\"]\n        Runner[\"claude-hook-executor.ts\"]\n        Command[\"CommandRunner<br/>spawn + stdin/stdout\"]\n        Prompt[\"PromptRunner<br/>LLM yes/no call\"]\n        Agent[\"AgentRunner<br/>subagent spawn\"]\n    end\n\n    subgraph Integration [\"Integration Points\"]\n        PreTool[\"pi-tools.before-tool-call.ts<br/>\u2192 PreToolUse\"]\n        PostTool[\"pi-embedded-subscribe.handlers.tools.ts<br/>\u2192 PostToolUse/Failure\"]\n        UserPrompt[\"gateway/hooks.ts<br/>\u2192 UserPromptSubmit\"]\n        StopHook[\"pi-embedded-subscribe.ts<br/>\u2192 Stop on turn_end\"]\n        Subagent[\"sessions-spawn-tool.ts<br/>\u2192 SubagentStart/Stop\"]\n        Compact[\"pi-embedded-runner/compact.ts<br/>\u2192 PreCompact\"]\n    end\n\n    Settings --> Parser\n    Schema --> Parser\n    Parser --> Registry2\n    Registry2 --> Runner\n    Runner --> Command\n    Runner --> Prompt\n    Runner --> Agent\n\n    PreTool --> Runner\n    PostTool --> Runner\n    UserPrompt --> Runner\n    StopHook --> Runner\n    Subagent --> Runner\n    Compact --> Runner\n```\n\n## Data Flow\n\n```mermaid\nsequenceDiagram\n    participant Agent\n    participant HookRegistry\n    participant Executor\n    participant Handler as Shell/LLM/Agent\n\n    Agent->>HookRegistry: tool \"Bash\" called\n    HookRegistry->>HookRegistry: match(\"PreToolUse\", \"Bash\")\n    HookRegistry-->>Executor: matched hooks (priority order)\n    \n    loop Each matched hook\n        Executor->>Handler: spawn + JSON stdin\n        Handler-->>Executor: JSON stdout + exit code\n        alt exit 0 + allow\n            Executor->>Executor: continue to next hook\n        else exit 0 + deny\n            Executor-->>Agent: BLOCKED: reason\n        else exit 2\n            Executor-->>Agent: BLOCKED: stderr\n        else exit 1/other\n            Executor->>Executor: log error, continue\n        end\n    end\n    \n    Executor-->>Agent: proceed (with updatedInput if any)\n```\n\n## Implementation Phases\n\n### Phase 1: Hook Infrastructure (Tasks 1-2)\nFoundation types, config parsing, and executor framework.\n- Types: `ClaudeHookEvent`, `ClaudeHookHandler`, `ClaudeHookResult`\n- Config: Zod schemas for settings.json `hooks.claude` section\n- Executor: Command runner with spawn, timeout, JSON protocol\n\n### Phase 2: Tool Lifecycle Hooks (Tasks 3-4)\nIntegration at tool execution boundaries.\n- PreToolUse: Intercept before tool.execute(), can block/modify params\n- PostToolUse/PostToolUseFailure: Fire after tool completes\n\n### Phase 3: Agent Lifecycle Hooks (Tasks 5-6)\nIntegration at agent control points.\n- UserPromptSubmit: Intercept in gateway before dispatch\n- Stop: Intercept turn_end, can force agent to continue\n- SubagentStart/Stop: Wrap sessions-spawn-tool\n\n### Phase 4: Compaction & Polish (Tasks 7-8)\nFinal hook and documentation.\n- PreCompact: Fire before context compaction\n- Docs: Update docs/hooks.md, CHANGELOG.md\n\n## Alternatives Considered\n\n| Alternative | Pros | Cons | Decision |\n|-------------|------|------|----------|\n| Extend existing plugin hooks | Less code, reuses infrastructure | Plugin API is verbose, not user-friendly | **Rejected** - Claude-style is simpler for users |\n| Webhooks instead of shell | Network-native, language-agnostic | Requires server, latency | **Rejected** - shell is simpler |\n| YAML config instead of JSON | More readable | Already use JSON for settings | **Rejected** - consistency |\n| Single hook.ts file | Simpler | Would exceed 500 LOC guideline | **Rejected** - split by concern |\n\n## Non-Functional Requirements\n\n| Metric | Target | Rationale |\n|--------|--------|-----------|\n| Hook latency (command) | <100ms p99 (excluding script) | Don't add overhead to tool calls |\n| Hook latency (prompt) | <5s p99 | LLM calls are inherently slow |\n| Memory overhead | <10MB per active hook | Hooks shouldn't bloat agent |\n| Concurrent hooks | Support 10+ parallel PostToolUse | Fire-and-forget shouldn't queue |\n\n## Risks & Mitigations\n\n| Risk | Likelihood | Impact | Mitigation |\n|------|------------|--------|------------|\n| Hook hangs agent | Medium | High | Default 600s timeout, AbortController, SIGTERM\u2192SIGKILL escalation |\n| Hook crashes break agent | Medium | High | try/catch isolation, circuit breaker after 3 failures |\n| Shell injection | Low | Critical | Use execFile not exec, args as array |\n| Infinite recursion (Stop\u2192Stop) | Low | High | Track `stop_hook_active` flag |\n| Config parse errors on startup | Medium | Medium | Validate at load, warn but don't crash |\n\n## Rollout Plan\n\n1. **Alpha**: Ship behind `OPENCLAW_CLAUDE_HOOKS=1` env flag\n2. **Beta**: Enable by default, document in CHANGELOG\n3. **GA**: Remove flag, full docs\n\n**Rollback**: Disable via env flag or remove `hooks.claude` from settings.json\n\n## Quick Commands\n\n```bash\n# Run tests for hooks\npnpm test src/hooks/claude-style/\n\n# Test a hook manually (simulates PreToolUse)\necho '{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"ls\"}}' | ./my-hook.sh\n\n# Validate hook config\npnpm openclaw hooks check\n\n# Start gateway with hooks enabled\nOPENCLAW_CLAUDE_HOOKS=1 pnpm gateway:dev\n```\n\n## Acceptance Criteria\n\n- [ ] PreToolUse can block tool execution with reason shown to agent\n- [ ] PreToolUse can modify tool params via `updatedInput`\n- [ ] PostToolUse fires after successful tool with result in context\n- [ ] PostToolUseFailure fires after failed tool with error in context\n- [ ] UserPromptSubmit can block user messages before agent sees them\n- [ ] Stop can force agent to continue working (block turn_end)\n- [ ] SubagentStart fires when subagent spawns with parent context\n- [ ] SubagentStop fires when subagent completes with outcome\n- [ ] PreCompact fires before context compaction\n- [ ] Command handlers receive JSON stdin, return JSON stdout\n- [ ] Exit code 0 = parse stdout, 2 = block with stderr, other = log and continue\n- [ ] Hooks run in priority order (lower first)\n- [ ] Glob matchers work (`Bash`, `Bash*`, `*`)\n- [ ] Timeouts configurable per-hook (default: 600s command, 30s prompt, 60s agent)\n- [ ] docs/hooks.md updated with 8 new events\n- [ ] CHANGELOG.md entry added\n\n## References\n\n- [Claude Code Hooks Reference](https://code.claude.com/docs/en/hooks)\n- [gemini-cli hooks](https://github.com/google-gemini/gemini-cli/tree/main/packages/core/src/hooks) (93k\u2605)\n- [cline hooks](https://github.com/cline/cline/tree/main/src/core/hooks) (57k\u2605)\n- Existing plugin hooks: `src/plugins/hooks.ts:93-468`\n- Existing internal hooks: `src/hooks/internal-hooks.ts:67-143`\n- Tool execution: `src/agents/pi-tools.before-tool-call.ts:19-91`\n- Gateway hooks: `src/gateway/hooks.ts:185-242`\n- Subagent registry: `src/agents/subagent-registry.ts:12-28`\n- Compaction: `src/agents/pi-embedded-runner/compact.ts:112-150`\n"
+  },
+  "epic_id": "fn-1-add-claude-code-style-hooks-system",
+  "schema_version": 2,
+  "tasks": [
+    {
+      "data": {
+        "assignee": null,
+        "claim_note": "",
+        "claimed_at": null,
+        "created_at": "2026-02-04T05:38:10.910216Z",
+        "depends_on": [],
+        "epic": "fn-1-add-claude-code-style-hooks-system",
+        "id": "fn-1-add-claude-code-style-hooks-system.1",
+        "priority": null,
+        "spec_path": ".flow/tasks/fn-1-add-claude-code-style-hooks-system.1.md",
+        "status": "todo",
+        "title": "Hook types and config schema",
+        "updated_at": "2026-02-04T05:38:48.920796Z"
+      },
+      "id": "fn-1-add-claude-code-style-hooks-system.1",
+      "runtime": null,
+      "spec": "# fn-1-add-claude-code-style-hooks-system.1 Hook types and config schema\n\n## Description\nCreate TypeScript types and Zod schemas for the Claude-style hook system. This forms the foundation for all hook functionality.\n\n**Size:** M\n**Files:** \n- `src/hooks/claude-style/types.ts` (new)\n- `src/hooks/claude-style/config.ts` (new)\n- `src/config/zod-schema.hooks.ts` (modify)\n\n## Approach\n\n- Follow discriminated union pattern from existing `PluginHookHandlerMap` at `src/plugins/types.ts:287-301`\n- Use Zod schemas matching existing patterns in `src/config/zod-schema.hooks.ts:47-88`\n- Keep types generic enough for all 8 hook events\n\n## Key Types to Create\n\n```typescript\n// Event names\ntype ClaudeHookEvent = \n  | \"PreToolUse\" | \"PostToolUse\" | \"PostToolUseFailure\"\n  | \"UserPromptSubmit\" | \"Stop\"\n  | \"SubagentStart\" | \"SubagentStop\"\n  | \"PreCompact\";\n\n// Handler types (discriminated union on \"type\")\ntype ClaudeHookHandler = \n  | { type: \"command\"; command: string; timeout?: number; async?: boolean }\n  | { type: \"prompt\"; prompt: string; model?: string; timeout?: number }\n  | { type: \"agent\"; prompt: string; model?: string; timeout?: number };\n\n// Hook input (JSON to stdin)\ninterface ClaudeHookInput {\n  session_id: string;\n  hook_event_name: ClaudeHookEvent;\n  cwd: string;\n  permission_mode: string;\n  tool_name?: string;      // PreToolUse, PostToolUse, PostToolUseFailure\n  tool_input?: unknown;    // Tool arguments\n  tool_result?: unknown;   // PostToolUse, PostToolUseFailure\n  tool_error?: string;     // PostToolUseFailure\n  prompt?: string;         // UserPromptSubmit\n  subagent_id?: string;    // SubagentStart, SubagentStop\n  subagent_outcome?: unknown; // SubagentStop\n}\n\n// Hook output (JSON from stdout)\ninterface ClaudeHookOutput {\n  continue?: boolean;\n  decision?: \"allow\" | \"deny\" | \"ask\";\n  reason?: string;\n  updatedInput?: Record<string, unknown>;\n  additionalContext?: string;\n}\n```\n\n## Key Context\n\n- Zod v4.3.6 uses `z.discriminatedUnion()` for handler types (O(1) lookup)\n- Per AGENTS.md:168, avoid `Type.Union` in tool schemas - but this is config, not tools, so discriminated unions are OK\n## Acceptance\n- [ ] `ClaudeHookEvent` type covers all 8 events\n- [ ] `ClaudeHookHandler` discriminated union with command/prompt/agent variants\n- [ ] `ClaudeHookInput` interface with all event-specific fields\n- [ ] `ClaudeHookOutput` interface matching Claude Code protocol\n- [ ] `ClaudeHookMatcher` type with glob pattern support\n- [ ] Zod schemas validate config from settings.json\n- [ ] Zod schemas added to `src/config/zod-schema.hooks.ts`\n- [ ] Unit tests for schema validation (valid/invalid configs)\n- [ ] Exports from `src/hooks/claude-style/index.ts`\n## Done summary\nTBD\n\n## Evidence\n- Commits:\n- Tests:\n- PRs:\n"
+    },
+    {
+      "data": {
+        "assignee": null,
+        "claim_note": "",
+        "claimed_at": null,
+        "created_at": "2026-02-04T05:38:11.626770Z",
+        "depends_on": [],
+        "epic": "fn-1-add-claude-code-style-hooks-system",
+        "id": "fn-1-add-claude-code-style-hooks-system.2",
+        "priority": null,
+        "spec_path": ".flow/tasks/fn-1-add-claude-code-style-hooks-system.2.md",
+        "status": "todo",
+        "title": "Hook executor with command runner",
+        "updated_at": "2026-02-04T05:39:05.926654Z"
+      },
+      "id": "fn-1-add-claude-code-style-hooks-system.2",
+      "runtime": null,
+      "spec": "# fn-1-add-claude-code-style-hooks-system.2 Hook executor with command runner\n\n## Description\nImplement the hook executor that runs command, prompt, and agent handlers. Handles JSON protocol, timeouts, and error isolation.\n\n**Size:** M\n**Files:**\n- `src/hooks/claude-style/executor.ts` (new)\n- `src/hooks/claude-style/registry.ts` (new)\n- `src/hooks/claude-style/executor.test.ts` (new)\n\n## Approach\n\n- Follow `createHookRunner()` pattern at `src/plugins/hooks.ts:93-172`\n- Use `execFile` not `exec` for security (avoid shell injection)\n- Use `AbortController` with `AbortSignal.timeout()` for clean timeout handling\n- Circuit breaker after 3 consecutive failures per hook\n\n## Key Patterns\n\n**Command execution:**\n```typescript\n// Pattern from practice-scout findings\nconst child = spawn(cmd, [], {\n  stdio: ['pipe', 'pipe', 'pipe'],\n  signal: AbortSignal.timeout(timeoutMs),\n  cwd: projectDir,\n  shell: false  // Security: no shell expansion\n});\nchild.stdin.write(JSON.stringify(input));\nchild.stdin.end();\n```\n\n**Exit code handling:**\n- 0 = parse JSON stdout, respect decision\n- 2 = block with stderr as reason\n- other = log error, continue (non-blocking)\n\n**Registry pattern:**\n```typescript\nfunction matchHooks(event: ClaudeHookEvent, toolName?: string): ClaudeHookMatcher[] {\n  return config.hooks[event]\n    ?.filter(m => !m.matcher || globMatch(toolName, m.matcher))\n    .sort((a, b) => (a.priority ?? 10) - (b.priority ?? 10));\n}\n```\n\n## Key Context\n\n- Default timeouts: 600s command, 30s prompt, 60s agent\n- Hooks run in priority order (lower = earlier)\n- Per practice-scout: use `SIGTERM` then escalate to `SIGKILL` after grace period\n## Acceptance\n- [ ] `runClaudeHook()` function executes command handlers via spawn\n- [ ] JSON input written to stdin, JSON output read from stdout\n- [ ] Exit code 0 parses stdout JSON\n- [ ] Exit code 2 returns block with stderr as reason\n- [ ] Other exit codes log error and continue\n- [ ] Timeout via AbortController (configurable, default 600s)\n- [ ] `SIGTERM` \u2192 wait 5s \u2192 `SIGKILL` on timeout\n- [ ] Circuit breaker disables hook after 3 consecutive failures\n- [ ] `matchHooks()` returns hooks matching event + tool glob\n- [ ] Priority ordering (lower runs first)\n- [ ] Unit tests for executor (mock child_process)\n- [ ] Unit tests for registry (glob matching, priority sort)\n## Done summary\nTBD\n\n## Evidence\n- Commits:\n- Tests:\n- PRs:\n"
+    },
+    {
+      "data": {
+        "assignee": null,
+        "claim_note": "",
+        "claimed_at": null,
+        "created_at": "2026-02-04T05:38:22.265327Z",
+        "depends_on": [
+          "fn-1-add-claude-code-style-hooks-system.1",
+          "fn-1-add-claude-code-style-hooks-system.2"
+        ],
+        "epic": "fn-1-add-claude-code-style-hooks-system",
+        "id": "fn-1-add-claude-code-style-hooks-system.3",
+        "priority": null,
+        "spec_path": ".flow/tasks/fn-1-add-claude-code-style-hooks-system.3.md",
+        "status": "todo",
+        "title": "PreToolUse hook integration",
+        "updated_at": "2026-02-04T05:39:20.812073Z"
+      },
+      "id": "fn-1-add-claude-code-style-hooks-system.3",
+      "runtime": null,
+      "spec": "# fn-1-add-claude-code-style-hooks-system.3 PreToolUse hook integration\n\n## Description\nIntegrate PreToolUse hook at tool execution boundary. This hook can block tools or modify their input parameters.\n\n**Size:** M\n**Files:**\n- `src/agents/pi-tools.before-tool-call.ts` (modify)\n- `src/hooks/claude-style/hooks/pre-tool-use.ts` (new)\n- `src/hooks/claude-style/hooks/pre-tool-use.test.ts` (new)\n\n## Approach\n\n- Hook into existing `runBeforeToolCallHook()` at `src/agents/pi-tools.before-tool-call.ts:19-65`\n- Run Claude hooks BEFORE existing plugin hooks (Claude hooks are user-level policy)\n- If blocked, return `{ blocked: true, reason }` - existing flow handles display\n\n## Integration Point\n\nAt `src/agents/pi-tools.before-tool-call.ts:39-57`, after preparing context but before plugin hook:\n\n```typescript\n// NEW: Claude-style hooks first\nconst claudeResult = await runPreToolUseHooks({\n  session_id: sessionKey,\n  tool_name: toolName,\n  tool_input: params,\n  cwd: process.cwd(),\n});\nif (claudeResult.decision === 'deny') {\n  return { blocked: true, reason: claudeResult.reason };\n}\n// Apply param modifications\nconst finalParams = claudeResult.updatedInput ?? params;\n\n// Existing plugin hooks\nconst pluginResult = await hookRunner.runBeforeToolCall(...);\n```\n\n## Key Context\n\n- Existing `wrapToolWithBeforeToolCallHook()` at line 67-91 wraps tool.execute()\n- Tool name matching uses globs: `Bash`, `Bash*`, `*`\n- Response with `updatedInput` merges into tool params\n## Acceptance\n- [ ] `runPreToolUseHooks()` fires before tool execution\n- [ ] Hook receives tool_name, tool_input, session_id, cwd\n- [ ] Decision \"deny\" blocks tool with reason shown to agent\n- [ ] Decision \"allow\" proceeds with optional updatedInput\n- [ ] `updatedInput` merged into tool params before execution\n- [ ] Runs before existing plugin `before_tool_call` hooks\n- [ ] Glob matching works for tool names (Bash, Bash*, *)\n- [ ] Integration test: hook blocks `rm -rf` command\n- [ ] Integration test: hook modifies params\n## Done summary\nTBD\n\n## Evidence\n- Commits:\n- Tests:\n- PRs:\n"
+    },
+    {
+      "data": {
+        "assignee": null,
+        "claim_note": "",
+        "claimed_at": null,
+        "created_at": "2026-02-04T05:38:22.382253Z",
+        "depends_on": [
+          "fn-1-add-claude-code-style-hooks-system.1",
+          "fn-1-add-claude-code-style-hooks-system.2"
+        ],
+        "epic": "fn-1-add-claude-code-style-hooks-system",
+        "id": "fn-1-add-claude-code-style-hooks-system.4",
+        "priority": null,
+        "spec_path": ".flow/tasks/fn-1-add-claude-code-style-hooks-system.4.md",
+        "status": "todo",
+        "title": "PostToolUse and PostToolUseFailure hooks",
+        "updated_at": "2026-02-04T05:39:33.076846Z"
+      },
+      "id": "fn-1-add-claude-code-style-hooks-system.4",
+      "runtime": null,
+      "spec": "# fn-1-add-claude-code-style-hooks-system.4 PostToolUse and PostToolUseFailure hooks\n\n## Description\nIntegrate PostToolUse and PostToolUseFailure hooks after tool execution completes. These are fire-and-forget (cannot block).\n\n**Size:** M\n**Files:**\n- `src/agents/pi-embedded-subscribe.handlers.tools.ts` (modify)\n- `src/hooks/claude-style/hooks/post-tool-use.ts` (new)\n- `src/hooks/claude-style/hooks/post-tool-use.test.ts` (new)\n\n## Approach\n\n- Hook into `handleToolExecutionEnd()` at `src/agents/pi-embedded-subscribe.handlers.tools.ts:148-229`\n- Fire PostToolUse on success, PostToolUseFailure on error\n- Run async (fire-and-forget) - don't block agent flow\n\n## Integration Point\n\nAt `src/agents/pi-embedded-subscribe.handlers.tools.ts:180-200`, after tool result is captured:\n\n```typescript\n// NEW: Claude-style post hooks (fire-and-forget)\nconst hookInput = {\n  session_id: sessionKey,\n  tool_name: toolName,\n  tool_input: toolArgs,\n  tool_result: result,\n};\n\nif (isError) {\n  hookInput.tool_error = errorMessage;\n  runPostToolUseFailureHooks(hookInput).catch(logError);\n} else {\n  runPostToolUseHooks(hookInput).catch(logError);\n}\n```\n\n## Key Context\n\n- Existing `after_tool_call` plugin hook at `src/plugins/hooks.ts:308-313` is also fire-and-forget\n- Tool result may include binary data (images) - serialize carefully\n- These hooks commonly used for auto-linting, logging, notifications\n## Acceptance\n- [ ] `runPostToolUseHooks()` fires after successful tool execution\n- [ ] `runPostToolUseFailureHooks()` fires after failed tool execution\n- [ ] Hook receives tool_name, tool_input, tool_result (or tool_error)\n- [ ] Hooks run async (fire-and-forget, don't block agent)\n- [ ] Multiple hooks can run in parallel\n- [ ] Errors logged but don't crash agent\n- [ ] Integration test: PostToolUse fires after Write tool\n- [ ] Integration test: PostToolUseFailure fires on tool error\n## Done summary\nTBD\n\n## Evidence\n- Commits:\n- Tests:\n- PRs:\n"
+    },
+    {
+      "data": {
+        "assignee": null,
+        "claim_note": "",
+        "claimed_at": null,
+        "created_at": "2026-02-04T05:38:22.500748Z",
+        "depends_on": [
+          "fn-1-add-claude-code-style-hooks-system.1",
+          "fn-1-add-claude-code-style-hooks-system.2"
+        ],
+        "epic": "fn-1-add-claude-code-style-hooks-system",
+        "id": "fn-1-add-claude-code-style-hooks-system.5",
+        "priority": null,
+        "spec_path": ".flow/tasks/fn-1-add-claude-code-style-hooks-system.5.md",
+        "status": "todo",
+        "title": "UserPromptSubmit and Stop hooks",
+        "updated_at": "2026-02-04T05:39:46.734624Z"
+      },
+      "id": "fn-1-add-claude-code-style-hooks-system.5",
+      "runtime": null,
+      "spec": "# fn-1-add-claude-code-style-hooks-system.5 UserPromptSubmit and Stop hooks\n\n## Description\nImplement UserPromptSubmit (intercept user messages) and Stop (prevent agent from finishing) hooks.\n\n**Size:** M\n**Files:**\n- `src/gateway/hooks.ts` (modify)\n- `src/agents/pi-embedded-subscribe.ts` (modify)\n- `src/hooks/claude-style/hooks/user-prompt.ts` (new)\n- `src/hooks/claude-style/hooks/stop.ts` (new)\n\n## Approach\n\n**UserPromptSubmit:**\n- Hook into `normalizeAgentPayload()` at `src/gateway/hooks.ts:185-242`\n- Fire before message dispatched to agent\n- Can block message or modify content\n\n**Stop:**\n- Hook into agent turn_end handling in `src/agents/pi-embedded-subscribe.ts`\n- Fire when agent signals completion\n- If blocked, agent receives prompt to continue working\n- Track `stop_hook_active` flag to prevent infinite recursion\n\n## Integration Points\n\n**UserPromptSubmit** at `src/gateway/hooks.ts:200-210`:\n```typescript\n// NEW: UserPromptSubmit hook\nconst claudeResult = await runUserPromptSubmitHooks({\n  session_id: sessionKey,\n  prompt: userMessage,\n  cwd: process.cwd(),\n});\nif (claudeResult.decision === 'deny') {\n  return { blocked: true, reason: claudeResult.reason };\n}\nconst finalPrompt = claudeResult.updatedInput?.prompt ?? userMessage;\n```\n\n**Stop** - find turn_end event handler, wrap with:\n```typescript\n// NEW: Stop hook (prevent turn_end)\nif (!stopHookActive) {\n  stopHookActive = true;\n  const result = await runStopHooks({ session_id, cwd });\n  stopHookActive = false;\n  if (result.decision === 'deny') {\n    // Inject continuation prompt\n    sendContinuationPrompt(result.reason ?? 'Continue working');\n    return; // Don't emit turn_end\n  }\n}\n```\n\n## Key Context\n\n- Stop hook is powerful - can force agent to keep working until conditions met\n- `stop_hook_active` flag prevents hook calling itself recursively\n- UserPromptSubmit useful for content filtering, prompt injection detection\n## Acceptance\n- [ ] `runUserPromptSubmitHooks()` fires when user sends message\n- [ ] UserPromptSubmit can block message with reason\n- [ ] UserPromptSubmit can modify prompt content\n- [ ] `runStopHooks()` fires when agent signals turn_end\n- [ ] Stop hook \"deny\" prevents agent from finishing\n- [ ] Agent receives continuation prompt on Stop block\n- [ ] Recursion guard prevents Stop\u2192Stop infinite loop\n- [ ] Integration test: UserPromptSubmit blocks forbidden content\n- [ ] Integration test: Stop hook forces agent to continue\n## Done summary\nTBD\n\n## Evidence\n- Commits:\n- Tests:\n- PRs:\n"
+    },
+    {
+      "data": {
+        "assignee": null,
+        "claim_note": "",
+        "claimed_at": null,
+        "created_at": "2026-02-04T05:38:22.615797Z",
+        "depends_on": [
+          "fn-1-add-claude-code-style-hooks-system.1",
+          "fn-1-add-claude-code-style-hooks-system.2"
+        ],
+        "epic": "fn-1-add-claude-code-style-hooks-system",
+        "id": "fn-1-add-claude-code-style-hooks-system.6",
+        "priority": null,
+        "spec_path": ".flow/tasks/fn-1-add-claude-code-style-hooks-system.6.md",
+        "status": "todo",
+        "title": "SubagentStart and SubagentStop hooks",
+        "updated_at": "2026-02-04T05:39:59.396500Z"
+      },
+      "id": "fn-1-add-claude-code-style-hooks-system.6",
+      "runtime": null,
+      "spec": "# fn-1-add-claude-code-style-hooks-system.6 SubagentStart and SubagentStop hooks\n\n## Description\nImplement SubagentStart and SubagentStop hooks for subagent lifecycle tracking.\n\n**Size:** M\n**Files:**\n- `src/agents/tools/sessions-spawn-tool.ts` (modify)\n- `src/agents/subagent-registry.ts` (modify)\n- `src/hooks/claude-style/hooks/subagent.ts` (new)\n\n## Approach\n\n- Hook into `createSessionsSpawnTool()` at `src/agents/tools/sessions-spawn-tool.ts:68-283`\n- SubagentStart: Fire before subagent spawns, can inject context\n- SubagentStop: Fire when subagent completes, can verify work\n\n## Integration Points\n\n**SubagentStart** at spawn time (~line 150):\n```typescript\n// NEW: SubagentStart hook (inject context)\nconst claudeResult = await runSubagentStartHooks({\n  session_id: parentSessionKey,\n  subagent_id: childSessionKey,\n  subagent_task: task,\n  cwd: process.cwd(),\n});\n// additionalContext gets prepended to subagent's task\nconst finalTask = claudeResult.additionalContext \n  ? `${claudeResult.additionalContext}\\n\\n${task}`\n  : task;\n```\n\n**SubagentStop** - integrate with `SubagentRunRecord` at `src/agents/subagent-registry.ts:12-28`:\n```typescript\n// On subagent completion\nconst outcome = getSubagentOutcome(childSessionKey);\nconst claudeResult = await runSubagentStopHooks({\n  session_id: parentSessionKey,\n  subagent_id: childSessionKey,\n  subagent_outcome: outcome,\n  cwd: process.cwd(),\n});\nif (claudeResult.decision === 'deny') {\n  // Reject subagent work, re-run with feedback\n  return { rejected: true, reason: claudeResult.reason };\n}\n```\n\n## Key Context\n\n- Existing `SubagentRunRecord` tracks runId, childSessionKey, outcome\n- `sendAnnounce()` at `src/agents/subagent-announce.ts:127-146` handles lifecycle events\n- SubagentStop can verify subagent work before accepting it\n## Acceptance\n- [ ] `runSubagentStartHooks()` fires before subagent spawns\n- [ ] SubagentStart can inject additional context into subagent task\n- [ ] `runSubagentStopHooks()` fires when subagent completes\n- [ ] SubagentStop receives subagent outcome (success/failure/output)\n- [ ] SubagentStop can reject work with reason\n- [ ] Hook receives parent session_id and subagent_id\n- [ ] Integration test: SubagentStart injects context\n- [ ] Integration test: SubagentStop verifies and rejects bad work\n## Done summary\nTBD\n\n## Evidence\n- Commits:\n- Tests:\n- PRs:\n"
+    },
+    {
+      "data": {
+        "assignee": null,
+        "claim_note": "",
+        "claimed_at": null,
+        "created_at": "2026-02-04T05:38:28.918390Z",
+        "depends_on": [
+          "fn-1-add-claude-code-style-hooks-system.1",
+          "fn-1-add-claude-code-style-hooks-system.2"
+        ],
+        "epic": "fn-1-add-claude-code-style-hooks-system",
+        "id": "fn-1-add-claude-code-style-hooks-system.7",
+        "priority": null,
+        "spec_path": ".flow/tasks/fn-1-add-claude-code-style-hooks-system.7.md",
+        "status": "todo",
+        "title": "PreCompact hook integration",
+        "updated_at": "2026-02-04T05:40:14.538505Z"
+      },
+      "id": "fn-1-add-claude-code-style-hooks-system.7",
+      "runtime": null,
+      "spec": "# fn-1-add-claude-code-style-hooks-system.7 PreCompact hook integration\n\n## Description\nImplement PreCompact hook that fires before context compaction. Fire-and-forget (cannot prevent compaction).\n\n**Size:** S\n**Files:**\n- `src/agents/pi-embedded-runner/compact.ts` (modify)\n- `src/hooks/claude-style/hooks/pre-compact.ts` (new)\n\n## Approach\n\n- Hook into `compactEmbeddedPiSessionDirect()` at `src/agents/pi-embedded-runner/compact.ts:112-150`\n- Fire before compaction begins\n- Hook receives session context, can log or trigger external actions\n- Fire-and-forget (doesn't block compaction)\n\n## Integration Point\n\nAt `src/agents/pi-embedded-runner/compact.ts:120-125`, before compaction logic:\n\n```typescript\n// NEW: PreCompact hook (fire-and-forget)\nrunPreCompactHooks({\n  session_id: sessionKey,\n  message_count: messages.length,\n  token_estimate: tokenCount,\n  cwd: process.cwd(),\n}).catch(logError);\n\n// Existing compaction logic continues...\n```\n\n## Key Context\n\n- Existing `before_compaction` plugin hook at `src/plugins/hooks.ts:216-221` is void\n- Compaction happens when context approaches token limit\n- Hook useful for logging, external backup, analytics\n## Acceptance\n- [ ] `runPreCompactHooks()` fires before context compaction\n- [ ] Hook receives session_id, message_count, token_estimate\n- [ ] Hook runs fire-and-forget (doesn't block compaction)\n- [ ] Errors logged but don't prevent compaction\n- [ ] Integration test: PreCompact fires before compaction\n## Done summary\nTBD\n\n## Evidence\n- Commits:\n- Tests:\n- PRs:\n"
+    },
+    {
+      "data": {
+        "assignee": null,
+        "claim_note": "",
+        "claimed_at": null,
+        "created_at": "2026-02-04T05:38:29.016979Z",
+        "depends_on": [
+          "fn-1-add-claude-code-style-hooks-system.3",
+          "fn-1-add-claude-code-style-hooks-system.4",
+          "fn-1-add-claude-code-style-hooks-system.5",
+          "fn-1-add-claude-code-style-hooks-system.6",
+          "fn-1-add-claude-code-style-hooks-system.7"
+        ],
+        "epic": "fn-1-add-claude-code-style-hooks-system",
+        "id": "fn-1-add-claude-code-style-hooks-system.8",
+        "priority": null,
+        "spec_path": ".flow/tasks/fn-1-add-claude-code-style-hooks-system.8.md",
+        "status": "todo",
+        "title": "Documentation and changelog updates",
+        "updated_at": "2026-02-04T05:40:29.030796Z"
+      },
+      "id": "fn-1-add-claude-code-style-hooks-system.8",
+      "runtime": null,
+      "spec": "# fn-1-add-claude-code-style-hooks-system.8 Documentation and changelog updates\n\n## Description\nUpdate documentation with all 8 new hook events. Move events from \"Future Events\" to active documentation.\n\n**Size:** S\n**Files:**\n- `docs/hooks.md` (modify)\n- `CHANGELOG.md` (modify)\n\n## Approach\n\n- Move 8 events from \"Future Events\" section (lines 249-258) to \"Event Types\" section (lines 222-248)\n- Add configuration examples for each event type\n- Add usage examples (shell scripts, LLM prompts)\n- Update CHANGELOG with feature entry\n\n## Documentation Sections to Add\n\nFor each event, add:\n1. Event description and when it fires\n2. Input fields (JSON stdin)\n3. Output fields (JSON stdout)\n4. Example hook script\n5. Common use cases\n\n**docs/hooks.md structure:**\n```markdown\n### PreToolUse\n\nFires before tool execution. Can block or modify tool input.\n\n**Input:**\n| Field | Type | Description |\n|-------|------|-------------|\n| tool_name | string | Name of tool being called |\n| tool_input | object | Tool arguments |\n| session_id | string | Current session |\n| cwd | string | Working directory |\n\n**Output:**\n| Field | Type | Description |\n|-------|------|-------------|\n| decision | \"allow\" \\| \"deny\" | Allow or block |\n| reason | string? | Block reason (shown to agent) |\n| updatedInput | object? | Modified tool params |\n\n**Example:**\n\\`\\`\\`bash\n#!/bin/bash\n# Block dangerous rm commands\n...\n\\`\\`\\`\n```\n\n## Key Context\n\n- Use existing doc structure from `docs/hooks.md`\n- Follow Mintlify conventions per CLAUDE.md\n- CHANGELOG format: `Changes` section with brief description\n## Acceptance\n- [ ] docs/hooks.md: PreToolUse event documented with input/output/examples\n- [ ] docs/hooks.md: PostToolUse event documented\n- [ ] docs/hooks.md: PostToolUseFailure event documented\n- [ ] docs/hooks.md: UserPromptSubmit event documented\n- [ ] docs/hooks.md: Stop event documented\n- [ ] docs/hooks.md: SubagentStart event documented\n- [ ] docs/hooks.md: SubagentStop event documented\n- [ ] docs/hooks.md: PreCompact event documented\n- [ ] docs/hooks.md: Configuration section updated with claude hooks config\n- [ ] docs/hooks.md: Events moved from \"Future Events\" to \"Event Types\"\n- [ ] CHANGELOG.md: Entry added for Claude-style hooks feature\n- [ ] Example hook scripts included for common use cases\n## Done summary\nTBD\n\n## Evidence\n- Commits:\n- Tests:\n- PRs:\n"
+    }
+  ]
+}
