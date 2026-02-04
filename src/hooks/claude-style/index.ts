@@ -95,3 +95,13 @@ export {
   type StopHookInput,
   type StopHookResult,
 } from "./hooks/stop.js";
+
+export {
+  runSubagentStartHooks,
+  runSubagentStopHooks,
+  hasSubagentStartHooks,
+  hasSubagentStopHooks,
+  type SubagentStartHookInput,
+  type SubagentStartHookResult,
+  type SubagentStopHookInput,
+} from "./hooks/subagent.js";
