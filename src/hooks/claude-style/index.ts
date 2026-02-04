@@ -42,3 +42,29 @@ export {
   isClaudeHooksEnabled,
   parseClaudeHooksConfig,
 } from "./config.js";
+
+// Executor
+export {
+  runClaudeHook,
+  runCommandHook,
+  parseCommand,
+  getHandlerId,
+  recordSuccess,
+  recordFailure,
+  isDisabled,
+  resetCircuitBreaker,
+  resetAllCircuitBreakers,
+  DEFAULT_TIMEOUTS,
+  type CommandHookResult,
+} from "./executor.js";
+
+// Registry
+export {
+  matchHooks,
+  matchesPattern,
+  getRulesForEvent,
+  hasHooksForEvent,
+  getPatternsForEvent,
+  countHandlersForEvent,
+  getClaudeHooksFromSettings,
+} from "./registry.js";
