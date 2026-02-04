@@ -59,10 +59,10 @@ const pluginResult = await hookRunner.runBeforeToolCall(...);
 
 ## Done summary
 
-TBD
+Integrated PreToolUse hooks at the tool execution boundary. Claude hooks run before plugin hooks, can block tools with deny decision or modify tool parameters via updatedInput. Added canonical-to-Claude name mapping (exec→Bash, read→Read) for matcher compatibility.
 
 ## Evidence
 
-- Commits:
-- Tests:
+- Commits: 4668085, f398dbb, ec1df00
+- Tests: pnpm vitest run src/hooks/claude-style/hooks/pre-tool-use.test.ts, pnpm vitest run src/agents/pi-tools.before-tool-call.test.ts
 - PRs:

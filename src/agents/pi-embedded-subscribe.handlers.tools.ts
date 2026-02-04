@@ -1,5 +1,9 @@
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import type { EmbeddedPiSubscribeContext } from "./pi-embedded-subscribe.handlers.types.js";
+import {
+  runPostToolUseHooks,
+  runPostToolUseFailureHooks,
+} from "../hooks/claude-style/hooks/post-tool-use.js";
 import { emitAgentEvent } from "../infra/agent-events.js";
 import { normalizeTextForComparison } from "./pi-embedded-helpers.js";
 import { isMessagingTool, isMessagingToolSendAction } from "./pi-embedded-messaging.js";
@@ -64,6 +68,9 @@ export async function handleToolExecutionStart(
 
   const meta = extendExecMeta(toolName, args, inferToolMetaFromArgs(toolName, args));
   ctx.state.toolMetaById.set(toolCallId, meta);
+  // Track tool args for post-tool hooks
+  const argsRecord = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
+  ctx.state.toolArgsById.set(toolCallId, argsRecord);
   ctx.log.debug(
     `embedded run tool start: runId=${ctx.params.runId} tool=${toolName} toolCallId=${toolCallId}`,
   );
@@ -161,8 +168,10 @@ export function handleToolExecutionEnd(
   const isToolError = isError || isToolResultError(result);
   const sanitizedResult = sanitizeToolResult(result);
   const meta = ctx.state.toolMetaById.get(toolCallId);
+  const toolArgs = ctx.state.toolArgsById.get(toolCallId) ?? {};
   ctx.state.toolMetas.push({ toolName, meta });
   ctx.state.toolMetaById.delete(toolCallId);
+  ctx.state.toolArgsById.delete(toolCallId);
   ctx.state.toolSummaryById.delete(toolCallId);
   if (isToolError) {
     const errorMessage = extractToolErrorMessage(sanitizedResult);
@@ -225,5 +234,23 @@ export function handleToolExecutionEnd(
     if (outputText) {
       ctx.emitToolOutput(toolName, meta, outputText);
     }
+  }
+
+  // Fire Claude-style post-tool hooks (fire-and-forget, don't block agent)
+  if (isToolError) {
+    const errorMessage = extractToolErrorMessage(sanitizedResult);
+    void runPostToolUseFailureHooks({
+      tool_name: toolName,
+      tool_input: toolArgs,
+      tool_error: errorMessage || "Tool execution failed",
+      cwd: process.cwd(),
+    });
+  } else {
+    void runPostToolUseHooks({
+      tool_name: toolName,
+      tool_input: toolArgs,
+      tool_result: result,
+      cwd: process.cwd(),
+    });
   }
 }

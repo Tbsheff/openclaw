@@ -68,3 +68,16 @@ export {
   countHandlersForEvent,
   getClaudeHooksFromSettings,
 } from "./registry.js";
+
+// Sanitization
+export { sanitizeForHook } from "./sanitize.js";
+
+// Hook implementations
+export {
+  runPostToolUseHooks,
+  runPostToolUseFailureHooks,
+  hasPostToolUseHooks,
+  hasPostToolUseFailureHooks,
+  type PostToolUseHookInput,
+  type PostToolUseFailureHookInput,
+} from "./hooks/post-tool-use.js";
