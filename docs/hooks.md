@@ -256,6 +256,435 @@ Planned event types:
 - **`message:sent`**: When a message is sent
 - **`message:received`**: When a message is received
 
+## Claude Code-style Hooks
+
+OpenClaw supports a rich hook system that mirrors Claude Code's hook architecture, enabling users to intercept, modify, and block agent actions via shell scripts.
+
+### Feature Flag
+
+This feature is behind a feature flag. Enable it by setting the environment variable:
+
+```bash
+export OPENCLAW_CLAUDE_HOOKS=1
+```
+
+Without this flag, Claude hooks configuration is ignored.
+
+### Configuration
+
+Claude hooks are configured in `settings.json` under `hooks.claude`:
+
+```json
+{
+  "hooks": {
+    "claude": {
+      "PreToolUse": [
+        {
+          "matcher": "*",
+          "hooks": [
+            {
+              "type": "command",
+              "command": ["node", "my-hook.js"]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
+### Command Handler Format
+
+Command handlers accept either a string or an array:
+
+- **`string`**: Parsed via shell-quote, tokens validated as strings (no operators like `|`, `>`)
+- **`string[]`**: Used directly as argv (recommended for commands with spaces or special characters)
+
+```json
+{
+  "type": "command",
+  "command": "node my-hook.js"
+}
+```
+
+Or with array syntax:
+
+```json
+{
+  "type": "command",
+  "command": ["node", "my-hook.js", "--verbose"]
+}
+```
+
+### Input/Output Protocol
+
+Hooks receive JSON via stdin and return JSON via stdout.
+
+**Exit codes:**
+
+- `0`: Allow (with optional JSON output)
+- `2`: Deny (stderr contains reason)
+- Other: Error (logged, counts toward circuit breaker)
+
+**Circuit breaker:** After 3 consecutive failures, a hook is disabled for the session.
+
+### Claude Hook Events
+
+#### PreToolUse
+
+Fires before a tool is executed. Can block or modify tool parameters.
+
+**Input:**
+
+```json
+{
+  "hook_event_name": "PreToolUse",
+  "session_id": "abc123",
+  "cwd": "/path/to/workspace",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "ls -la"
+  }
+}
+```
+
+**Output:**
+
+```json
+{
+  "decision": "allow",
+  "updatedInput": {
+    "command": "ls -la --color"
+  }
+}
+```
+
+**Decisions:**
+
+- `allow`: Proceed (optionally with `updatedInput`)
+- `deny`: Block the tool call (stderr logged as reason)
+- `ask`: Prompt for confirmation (for interactive contexts)
+
+**Example:** Block dangerous commands
+
+```javascript
+#!/usr/bin/env node
+const input = JSON.parse(require("fs").readFileSync(0, "utf8"));
+
+if (input.tool_name === "Bash" && input.tool_input.command?.includes("rm -rf")) {
+  process.stderr.write("Blocked: dangerous rm command");
+  process.exit(2);
+}
+
+console.log(JSON.stringify({ decision: "allow" }));
+```
+
+#### PostToolUse
+
+Fires after a tool completes successfully. Observe-only (fire-and-forget).
+
+**Input:**
+
+```json
+{
+  "hook_event_name": "PostToolUse",
+  "session_id": "abc123",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "ls -la"
+  },
+  "tool_result": "file1.txt\nfile2.txt"
+}
+```
+
+Tool results are sanitized (truncated to 10KB, binary content excluded).
+
+**Note:** PostToolUse hooks cannot block or modify; they are fire-and-forget for logging/observability.
+
+#### PostToolUseFailure
+
+Fires when a tool fails. Observe-only (fire-and-forget).
+
+**Input:**
+
+```json
+{
+  "hook_event_name": "PostToolUseFailure",
+  "session_id": "abc123",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "cat nonexistent.txt"
+  },
+  "tool_error": "No such file or directory"
+}
+```
+
+#### UserPromptSubmit
+
+Fires when a user submits a prompt (from any channel). Can modify the prompt.
+
+**Input:**
+
+```json
+{
+  "hook_event_name": "UserPromptSubmit",
+  "session_id": "abc123",
+  "prompt": "Hello, can you help me?",
+  "channel": "telegram"
+}
+```
+
+**Output:**
+
+```json
+{
+  "decision": "allow",
+  "prompt": "Hello, can you help me? (Note: Be concise)"
+}
+```
+
+**Decisions:**
+
+- `allow`: Proceed (optionally with modified `prompt`)
+- `deny`: Block the prompt submission
+- `ask`: Prompt for confirmation
+
+**Example:** Add context to prompts
+
+```javascript
+#!/usr/bin/env node
+const input = JSON.parse(require("fs").readFileSync(0, "utf8"));
+
+const modifiedPrompt = input.prompt + "\n\n[System: User timezone is PST]";
+
+console.log(
+  JSON.stringify({
+    decision: "allow",
+    prompt: modifiedPrompt,
+  }),
+);
+```
+
+#### Stop
+
+Fires when the agent is about to stop. Can request continuation with a message.
+
+**Input:**
+
+```json
+{
+  "hook_event_name": "Stop",
+  "session_id": "abc123",
+  "reason": "end_turn",
+  "last_response": "I've completed the task."
+}
+```
+
+**Output:**
+
+```json
+{
+  "decision": "deny",
+  "continuation_message": "Please also run the tests before finishing."
+}
+```
+
+**Decisions:**
+
+- `allow`: Allow the agent to stop
+- `deny`: Continue with `continuation_message`
+
+**Implementation note:** Stop hooks use a non-blocking continuation approach integrated within the agent loop. When denied, the agent calls `prompt(continuationMessage)` to continue. Max 3 retries prevent infinite loops. This works for all callers (CLI, gateway, cron, probes, hooks) automatically.
+
+**Example:** Require tests before stopping
+
+```javascript
+#!/usr/bin/env node
+const input = JSON.parse(require("fs").readFileSync(0, "utf8"));
+
+// Check if tests were mentioned in the session
+if (!input.last_response?.includes("tests pass")) {
+  console.log(
+    JSON.stringify({
+      decision: "deny",
+      continuation_message: "Please run tests and confirm they pass.",
+    }),
+  );
+  process.exit(0);
+}
+
+console.log(JSON.stringify({ decision: "allow" }));
+```
+
+#### SubagentStart
+
+Fires when a subagent starts. Can inject additional context.
+
+**Input:**
+
+```json
+{
+  "hook_event_name": "SubagentStart",
+  "session_id": "abc123",
+  "subagent_id": "task-worker-1",
+  "subagent_type": "Task"
+}
+```
+
+**Output:**
+
+```json
+{
+  "decision": "allow",
+  "additionalContext": "Remember to follow the coding standards in CLAUDE.md"
+}
+```
+
+#### SubagentStop
+
+Fires when a subagent stops. Observe-only.
+
+**Input:**
+
+```json
+{
+  "hook_event_name": "SubagentStop",
+  "session_id": "abc123",
+  "subagent_id": "task-worker-1",
+  "subagent_outcome": {
+    "status": "completed"
+  }
+}
+```
+
+**Note:** SubagentStop is observe-only. The subagent registry is announce/cleanup only; hooks cannot reject or retry subagent completion.
+
+#### PreCompact
+
+Fires before session compaction. Fire-and-forget (observe-only).
+
+**Input:**
+
+```json
+{
+  "hook_event_name": "PreCompact",
+  "session_id": "abc123",
+  "message_count": 150,
+  "token_count": 45000
+}
+```
+
+**Example:** Log compaction events
+
+```javascript
+#!/usr/bin/env node
+const fs = require("fs");
+const input = JSON.parse(fs.readFileSync(0, "utf8"));
+
+fs.appendFileSync(
+  "/tmp/compactions.log",
+  `${new Date().toISOString()} session=${input.session_id} messages=${input.message_count}\n`,
+);
+
+console.log(JSON.stringify({ decision: "allow" }));
+```
+
+### Glob Matching
+
+Tool matchers use glob patterns via [picomatch](https://github.com/micromatch/picomatch):
+
+```json
+{
+  "PreToolUse": [
+    {
+      "matcher": "Bash",
+      "hooks": [{ "type": "command", "command": "bash-guard.sh" }]
+    },
+    {
+      "matcher": "mcp__*",
+      "hooks": [{ "type": "command", "command": "mcp-logger.sh" }]
+    },
+    {
+      "matcher": "*",
+      "hooks": [{ "type": "command", "command": "audit-all.sh" }]
+    }
+  ]
+}
+```
+
+### Full Example
+
+```json
+{
+  "hooks": {
+    "claude": {
+      "PreToolUse": [
+        {
+          "matcher": "Bash",
+          "hooks": [
+            {
+              "type": "command",
+              "command": ["node", "/path/to/bash-guard.js"],
+              "timeout": 10
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "matcher": "*",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "tool-logger.sh"
+            }
+          ]
+        }
+      ],
+      "UserPromptSubmit": [
+        {
+          "matcher": "*",
+          "hooks": [
+            {
+              "type": "command",
+              "command": ["node", "prompt-enricher.js"]
+            }
+          ]
+        }
+      ],
+      "Stop": [
+        {
+          "matcher": "*",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "stop-guard.sh"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
+### Timeout Configuration
+
+Each handler can specify a `timeout` in seconds:
+
+```json
+{
+  "type": "command",
+  "command": "slow-hook.sh",
+  "timeout": 30
+}
+```
+
+Default timeout is 600 seconds (10 minutes) for command handlers.
+
+If a hook times out, it receives SIGTERM followed by SIGKILL after 5 seconds.
+
 ## Creating Custom Hooks
 
 ### 1. Choose Location

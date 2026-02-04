@@ -1,6 +1,6 @@
 Goal (incl. success criteria):
 
-- Re-review updated SubagentStart/SubagentStop hook integration changes and deliver Carmack-level verdict.
+- Re-review updated PreCompact hook integration changes and deliver Carmack-level verdict.
 
 Constraints/Assumptions:
 
@@ -19,8 +19,8 @@ State:
 Done:
 
 - Read continuity ledger at start of turn.
-- Updated ledger for subagent hook re-review.
-- Re-read updated subagent hook files from disk.
+- Updated ledger for PreCompact hook re-review.
+- Re-read updated PreCompact hook files from disk.
 
 Now:
 
@@ -37,8 +37,9 @@ Open questions (UNCONFIRMED if needed):
 Working set (files/ids/commands):
 
 - `CONTINUITY.md`
-- `src/agents/subagent-registry.ts`
-- `src/agents/tools/sessions-spawn-tool.ts`
-- `src/hooks/claude-style/hooks/subagent.ts`
-- `src/hooks/claude-style/hooks/subagent.test.ts`
+- `.flow/tasks/fn-1-add-claude-code-style-hooks-system.5.md`
+- `.flow/tasks/fn-1-add-claude-code-style-hooks-system.6.md`
+- `src/agents/pi-embedded-runner/compact.ts`
+- `src/hooks/claude-style/hooks/pre-compact.ts`
+- `src/hooks/claude-style/hooks/pre-compact.test.ts`
 - `src/hooks/claude-style/index.ts`
