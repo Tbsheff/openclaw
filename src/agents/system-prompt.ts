@@ -1,9 +1,27 @@
 import type { ReasoningLevel, ThinkLevel } from "../auto-reply/thinking.js";
 import type { MemoryCitationsMode } from "../config/types.memory.js";
+import type { ClaudeHookEvent } from "../hooks/claude-style/types.js";
 import type { ResolvedTimeFormat } from "./date-time.js";
 import type { EmbeddedContextFile } from "./pi-embedded-helpers.js";
 import { SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
 import { listDeliverableMessageChannels } from "../utils/message-channel.js";
+
+/**
+ * Summary of hooks available for a specific event.
+ */
+export type HookEventSummary = {
+  event: ClaudeHookEvent;
+  patterns: string[];
+  handlerCount: number;
+};
+
+/**
+ * Information about configured hooks to surface to the agent.
+ */
+export type HooksInfo = {
+  enabled: boolean;
+  events: HookEventSummary[];
+};
 
 /**
  * Controls which hardcoded sections are included in the system prompt.
@@ -12,6 +30,41 @@ import { listDeliverableMessageChannels } from "../utils/message-channel.js";
  * - "none": Just basic identity line, no sections
  */
 export type PromptMode = "full" | "minimal" | "none";
+
+function buildHooksSection(params: { hooksInfo?: HooksInfo; isMinimal: boolean }): string[] {
+  if (params.isMinimal || !params.hooksInfo?.enabled) {
+    return [];
+  }
+
+  const { events } = params.hooksInfo;
+  if (events.length === 0) {
+    return [];
+  }
+
+  const lines: string[] = [
+    "## Hooks",
+    "User-configured hooks intercept agent actions. These hooks are active:",
+  ];
+
+  for (const { event, patterns, handlerCount } of events) {
+    const patternStr =
+      patterns.length <= 3 ? patterns.join(", ") : `${patterns.slice(0, 3).join(", ")}...`;
+    const plural = handlerCount === 1 ? "handler" : "handlers";
+    lines.push(`- ${event}: ${handlerCount} ${plural} (patterns: ${patternStr})`);
+  }
+
+  lines.push("");
+  lines.push("Hook behavior:");
+  lines.push("- PreToolUse: May block or modify tool calls before execution");
+  lines.push("- PostToolUse/PostToolUseFailure: Observe tool results (cannot block)");
+  lines.push("- UserPromptSubmit: May modify user prompts before processing");
+  lines.push("- Stop: May continue execution when agent would otherwise stop");
+  lines.push("- SubagentStart/SubagentStop: Observe subagent lifecycle");
+  lines.push("- PreCompact: Runs before context compaction");
+  lines.push("");
+
+  return lines;
+}
 
 function buildSkillsSection(params: {
   skillsPrompt?: string;
@@ -214,6 +267,8 @@ export function buildAgentSystemPrompt(params: {
     channel: string;
   };
   memoryCitationsMode?: MemoryCitationsMode;
+  /** Information about configured hooks to surface to the agent. */
+  hooksInfo?: HooksInfo;
 }) {
   const coreToolSummaries: Record<string, string> = {
     read: "Read file contents",
@@ -369,6 +424,10 @@ export function buildAgentSystemPrompt(params: {
     isMinimal,
     readToolName,
   });
+  const hooksSection = buildHooksSection({
+    hooksInfo: params.hooksInfo,
+    isMinimal,
+  });
   const workspaceNotes = (params.workspaceNotes ?? []).map((note) => note.trim()).filter(Boolean);
 
   // For "none" mode, return just the basic identity line
@@ -454,6 +513,7 @@ export function buildAgentSystemPrompt(params: {
     ...workspaceNotes,
     "",
     ...docsSection,
+    ...hooksSection,
     params.sandboxInfo?.enabled ? "## Sandbox" : "",
     params.sandboxInfo?.enabled
       ? [

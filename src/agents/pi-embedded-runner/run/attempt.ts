@@ -7,7 +7,12 @@ import os from "node:os";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
 import { resolveHeartbeatPrompt } from "../../../auto-reply/heartbeat.js";
 import { resolveChannelCapabilities } from "../../../config/channel-capabilities.js";
-import { isClaudeHooksEnabled, runStopHooks } from "../../../hooks/claude-style/index.js";
+import {
+  buildHooksInfo,
+  getClaudeHooksFromSettings,
+  isClaudeHooksEnabled,
+  runStopHooks,
+} from "../../../hooks/claude-style/index.js";
 import { getMachineDisplayName } from "../../../infra/machine-name.js";
 import { MAX_IMAGE_BYTES } from "../../../media/constants.js";
 import { getGlobalHookRunner } from "../../../plugins/hook-runner-global.js";
@@ -346,6 +351,12 @@ export async function runEmbeddedAttempt(
     });
     const ttsHint = params.config ? buildTtsSystemPromptHint(params.config) : undefined;
 
+    // Build hooks info for system prompt (only if Claude hooks are enabled)
+    const claudeHooksConfig = isClaudeHooksEnabled()
+      ? getClaudeHooksFromSettings(params.config?.hooks as Record<string, unknown> | undefined)
+      : undefined;
+    const hooksInfo = buildHooksInfo(claudeHooksConfig);
+
     const appendPrompt = buildEmbeddedSystemPrompt({
       workspaceDir: effectiveWorkspace,
       defaultThinkLevel: params.thinkLevel,
@@ -372,6 +383,7 @@ export async function runEmbeddedAttempt(
       userTimeFormat,
       contextFiles,
       memoryCitationsMode: params.config?.memory?.citations,
+      hooksInfo: hooksInfo.enabled ? hooksInfo : undefined,
     });
     const systemPromptReport = buildSystemPromptReport({
       source: "run",

@@ -67,6 +67,8 @@ export {
   getPatternsForEvent,
   countHandlersForEvent,
   getClaudeHooksFromSettings,
+  buildHooksInfo,
+  type HookEventSummary,
 } from "./registry.js";
 
 // Sanitization

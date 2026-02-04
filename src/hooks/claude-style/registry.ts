@@ -142,3 +142,52 @@ export function getClaudeHooksFromSettings(
 
   return hooks.claude as ClaudeHooksConfig | undefined;
 }
+
+/**
+ * Summary of hooks for a specific event (for system prompt).
+ */
+export type HookEventSummary = {
+  event: ClaudeHookEvent;
+  patterns: string[];
+  handlerCount: number;
+};
+
+/**
+ * Build a summary of all configured hooks for the system prompt.
+ * This helps the agent understand what hooks are active.
+ */
+export function buildHooksInfo(config: ClaudeHooksConfig | undefined): {
+  enabled: boolean;
+  events: HookEventSummary[];
+} {
+  if (!config) {
+    return { enabled: false, events: [] };
+  }
+
+  const allEvents: ClaudeHookEvent[] = [
+    "PreToolUse",
+    "PostToolUse",
+    "PostToolUseFailure",
+    "UserPromptSubmit",
+    "Stop",
+    "SubagentStart",
+    "SubagentStop",
+    "PreCompact",
+  ];
+
+  const events: HookEventSummary[] = [];
+
+  for (const event of allEvents) {
+    const patterns = getPatternsForEvent(config, event);
+    const handlerCount = countHandlersForEvent(config, event);
+
+    if (handlerCount > 0) {
+      events.push({ event, patterns, handlerCount });
+    }
+  }
+
+  return {
+    enabled: events.length > 0,
+    events,
+  };
+}
