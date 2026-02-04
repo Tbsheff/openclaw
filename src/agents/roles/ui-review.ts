@@ -120,6 +120,7 @@ export class UIReviewAgent extends BaseAgent {
       if (review.approved) {
         // UI looks good - send to CI agent
         await this.updateWorkStatus(workItem.id, "review");
+        await this.assignToRole(workItem.id, "ci-agent");
         await this.publish({
           workItemId: workItem.id,
           eventType: "review_completed",
@@ -134,6 +135,7 @@ export class UIReviewAgent extends BaseAgent {
       } else {
         // UI issues - send back to senior dev
         await this.updateWorkStatus(workItem.id, "in_progress");
+        await this.assignToRole(workItem.id, "senior-dev");
         await this.publish({
           workItemId: workItem.id,
           eventType: "review_completed",
@@ -185,8 +187,9 @@ export class UIReviewAgent extends BaseAgent {
   /**
    * Pass through to CI agent for non-UI work items.
    */
-  private async passThrough(workItem: WorkItem, message: StreamMessage): Promise<void> {
+  private async passThrough(workItem: WorkItem, _message: StreamMessage): Promise<void> {
     await this.updateWorkStatus(workItem.id, "review");
+    await this.assignToRole(workItem.id, "ci-agent");
     await this.publish({
       workItemId: workItem.id,
       eventType: "review_completed",
