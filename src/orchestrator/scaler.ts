@@ -178,7 +178,7 @@ export class Scaler extends EventEmitter {
     if (shouldScaleUp) {
       const toSpawn = Math.min(
         config.maxInstances - currentCount,
-        Math.max(1, Math.ceil(queueDepth / config.scaleUpThreshold)),
+        Math.max(1, Math.ceil(totalWork / config.scaleUpThreshold)),
       );
 
       for (let i = 0; i < toSpawn; i++) {

@@ -226,7 +226,11 @@ async function runOrchestratorStart(opts: { json: boolean; foreground: boolean }
     const { entry, useTsx } = getOrchestratorEntry();
     const args = useTsx ? ["--import", "tsx", entry] : [entry];
 
-    // Open log file for stdout/stderr to prevent buffer deadlock
+    // Ensure log directory exists, then open log file for stdout/stderr
+    const logDir = join(homedir(), ".openclaw");
+    if (!existsSync(logDir)) {
+      mkdirSync(logDir, { recursive: true });
+    }
     const { openSync } = await import("node:fs");
     const logFd = openSync(ORCHESTRATOR_LOG_FILE, "a");
 

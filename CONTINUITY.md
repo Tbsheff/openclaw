@@ -14,13 +14,13 @@ Key decisions:
 
 State:
 
-- Re-review complete; issues identified; verdict pending.
+- Re-review complete; issues found; verdict pending.
 
 Done:
 
 - Read continuity ledger at start of turn.
-- Re-read updated pipeline code, CLI, and docs.
-- Identified blocking issues in agent handoff and scaler.
+- Re-read updated pipeline code, CLI, and docs after fixes.
+- Identified remaining issues (scaler variable bug, orchestrator log dir).
 
 Now:
 
