@@ -252,8 +252,12 @@ export async function runCommandHook(
 
     // Write input to stdin (ignore EPIPE if process exits quickly)
     if (child.stdin) {
-      child.stdin.on("error", () => {
-        // Ignore EPIPE errors - process may exit before reading all input
+      child.stdin.on("error", (err: NodeJS.ErrnoException) => {
+        // Ignore EPIPE/ERR_STREAM_DESTROYED - process may exit before reading all input
+        if (err.code !== "EPIPE" && err.code !== "ERR_STREAM_DESTROYED") {
+          // Log unexpected stdin errors for debugging
+          console.error(`[hook executor] stdin error: ${err.code} ${err.message}`);
+        }
       });
       child.stdin.write(inputJson);
       child.stdin.end();

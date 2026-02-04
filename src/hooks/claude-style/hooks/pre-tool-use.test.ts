@@ -237,7 +237,10 @@ describe("PreToolUse integration", () => {
           {
             matcher: "Bash",
             hooks: [
-              { type: "command", command: ["bash", "-c", "echo 'rm -rf blocked' >&2; exit 2"] },
+              {
+                type: "command",
+                command: ["node", "-e", "console.error('rm -rf blocked'); process.exit(2)"],
+              },
             ],
           },
         ],
@@ -257,9 +260,9 @@ describe("PreToolUse integration", () => {
               {
                 type: "command",
                 command: [
-                  "bash",
-                  "-c",
-                  'echo \'{"decision": "deny", "reason": "policy violation"}\'',
+                  "node",
+                  "-e",
+                  'console.log(JSON.stringify({decision:"deny",reason:"policy violation"}))',
                 ],
               },
             ],
@@ -282,7 +285,11 @@ describe("PreToolUse integration", () => {
             hooks: [
               {
                 type: "command",
-                command: ["bash", "-c", 'echo \'{"updatedInput": {"timeout": 5000}}\''],
+                command: [
+                  "node",
+                  "-e",
+                  "console.log(JSON.stringify({updatedInput:{timeout:5000}}))",
+                ],
               },
             ],
           },
@@ -302,11 +309,11 @@ describe("PreToolUse integration", () => {
             hooks: [
               {
                 type: "command",
-                command: ["bash", "-c", 'echo \'{"updatedInput": {"field1": "a"}}\''],
+                command: ["node", "-e", 'console.log(JSON.stringify({updatedInput:{field1:"a"}}))'],
               },
               {
                 type: "command",
-                command: ["bash", "-c", 'echo \'{"updatedInput": {"field2": "b"}}\''],
+                command: ["node", "-e", 'console.log(JSON.stringify({updatedInput:{field2:"b"}}))'],
               },
             ],
           },
@@ -325,7 +332,7 @@ describe("PreToolUse integration", () => {
         PreToolUse: [
           {
             matcher: "*",
-            hooks: [{ type: "command", command: ["bash", "-c", "exit 1"] }],
+            hooks: [{ type: "command", command: ["node", "-e", "process.exit(1)"] }],
           },
         ],
       });
@@ -339,7 +346,7 @@ describe("PreToolUse integration", () => {
         PreToolUse: [
           {
             matcher: "*",
-            hooks: [{ type: "command", command: ["bash", "-c", "echo 'not json'"] }],
+            hooks: [{ type: "command", command: ["node", "-e", "console.log('not json')"] }],
           },
         ],
       });
@@ -372,11 +379,15 @@ describe("PreToolUse integration", () => {
             hooks: [
               {
                 type: "command",
-                command: ["bash", "-c", 'echo \'{"decision": "deny", "reason": "first"}\''],
+                command: [
+                  "node",
+                  "-e",
+                  'console.log(JSON.stringify({decision:"deny",reason:"first"}))',
+                ],
               },
               {
                 type: "command",
-                command: ["bash", "-c", 'echo \'{"decision": "allow"}\''],
+                command: ["node", "-e", 'console.log(JSON.stringify({decision:"allow"}))'],
               },
             ],
           },
