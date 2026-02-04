@@ -1,5 +1,6 @@
 import { loadConfig } from "../config/config.js";
 import { callGateway } from "../gateway/call.js";
+import { runSubagentStopHooks } from "../hooks/claude-style/hooks/subagent.js";
 import { onAgentEvent } from "../infra/agent-events.js";
 import { type DeliveryContext, normalizeDeliveryContext } from "../utils/delivery-context.js";
 import { runSubagentAnnounceFlow, type SubagentRunOutcome } from "./subagent-announce.js";
@@ -25,6 +26,8 @@ export type SubagentRunRecord = {
   archiveAtMs?: number;
   cleanupCompletedAt?: number;
   cleanupHandled?: boolean;
+  /** Whether SubagentStop hooks have been fired (fire once only). */
+  stopHooksFired?: boolean;
 };
 
 const subagentRuns = new Map<string, SubagentRunRecord>();
@@ -57,6 +60,9 @@ function resumeSubagentRun(runId: string) {
   }
 
   if (typeof entry.endedAt === "number" && entry.endedAt > 0) {
+    // Fire SubagentStop hooks if not already fired (observe-only, fire-and-forget)
+    fireSubagentStopHooks(entry);
+
     if (!beginSubagentCleanup(runId)) {
       return;
     }
@@ -218,6 +224,9 @@ function ensureListener() {
     }
     persistSubagentRuns();
 
+    // Fire SubagentStop hooks (observe-only, fire-and-forget)
+    fireSubagentStopHooks(entry);
+
     if (!beginSubagentCleanup(evt.runId)) {
       return;
     }
@@ -260,6 +269,29 @@ function finalizeSubagentCleanup(runId: string, cleanup: "delete" | "keep", didA
   }
   entry.cleanupCompletedAt = Date.now();
   persistSubagentRuns();
+}
+
+/**
+ * Fire SubagentStop hooks for a completed subagent (fire-and-forget).
+ * Only fires once per subagent run.
+ */
+function fireSubagentStopHooks(entry: SubagentRunRecord) {
+  if (entry.stopHooksFired) {
+    return;
+  }
+  entry.stopHooksFired = true;
+  persistSubagentRuns();
+
+  // Fire-and-forget: don't await, just log errors
+  runSubagentStopHooks({
+    session_id: entry.requesterSessionKey,
+    subagent_id: entry.childSessionKey,
+    subagent_outcome: entry.outcome,
+    cwd: process.cwd(),
+  }).catch((err) => {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[subagent-registry] SubagentStop hook error: ${message}`);
+  });
 }
 
 function beginSubagentCleanup(runId: string) {
@@ -362,6 +394,10 @@ async function waitForSubagentCompletion(runId: string, waitTimeoutMs: number) {
     if (mutated) {
       persistSubagentRuns();
     }
+
+    // Fire SubagentStop hooks (observe-only, fire-and-forget)
+    fireSubagentStopHooks(entry);
+
     if (!beginSubagentCleanup(runId)) {
       return;
     }

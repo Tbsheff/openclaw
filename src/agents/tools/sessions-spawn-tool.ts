@@ -5,6 +5,7 @@ import type { AnyAgentTool } from "./common.js";
 import { formatThinkingLevels, normalizeThinkLevel } from "../../auto-reply/thinking.js";
 import { loadConfig } from "../../config/config.js";
 import { callGateway } from "../../gateway/call.js";
+import { runSubagentStartHooks } from "../../hooks/claude-style/hooks/subagent.js";
 import {
   isSubagentSessionKey,
   normalizeAgentId,
@@ -222,13 +223,42 @@ export function createSessionsSpawnTool(opts?: {
         task,
       });
 
+      // Fire SubagentStart hooks (can inject additional context or deny)
+      let effectiveTask = task;
+      try {
+        const hookResult = await runSubagentStartHooks({
+          session_id: requesterInternalKey,
+          subagent_id: childSessionKey,
+          subagent_type: "task",
+          task,
+          cwd: process.cwd(),
+        });
+
+        if (hookResult.decision === "deny") {
+          return jsonResult({
+            status: "denied",
+            error: hookResult.reason || "SubagentStart hook denied spawn",
+            childSessionKey,
+          });
+        }
+
+        // Inject additional context if provided
+        if (hookResult.additionalContext) {
+          effectiveTask = `${task}\n\n---\nAdditional context from hooks:\n${hookResult.additionalContext}`;
+        }
+      } catch (hookErr) {
+        // Log but don't block on hook errors
+        const message = hookErr instanceof Error ? hookErr.message : String(hookErr);
+        console.error(`[sessions_spawn] SubagentStart hook error: ${message}`);
+      }
+
       const childIdem = crypto.randomUUID();
       let childRunId: string = childIdem;
       try {
         const response = await callGateway<{ runId: string }>({
           method: "agent",
           params: {
-            message: task,
+            message: effectiveTask,
             sessionKey: childSessionKey,
             channel: requesterOrigin?.channel,
             to: requesterOrigin?.to ?? undefined,
