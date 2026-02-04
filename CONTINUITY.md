@@ -20,6 +20,7 @@ Done:
 
 - Read continuity ledger at start of turn.
 - Re-read updated stop/user-prompt hook files.
+- Identified issues: Stop hook returns allow early; empty-string prompt modifications ignored.
 
 Now:
 

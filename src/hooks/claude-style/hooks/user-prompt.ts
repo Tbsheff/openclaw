@@ -136,8 +136,8 @@ export async function runUserPromptSubmitHooks(
         return { decision: "ask", reason: output.reason };
       }
 
-      // Apply prompt modification if present
-      if (output.prompt && output.prompt !== currentPrompt) {
+      // Apply prompt modification if present (allow empty string rewrites)
+      if (typeof output.prompt === "string" && output.prompt !== currentPrompt) {
         log.debug(`UserPromptSubmit hook modified prompt`);
         currentPrompt = output.prompt;
       }

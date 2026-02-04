@@ -92,7 +92,10 @@ export async function runStopHooks(input: StopHookInput): Promise<StopHookResult
 
   log.debug(`Running Stop hooks: handlers=${handlers.length}`);
 
-  // Run each handler in order (first deny wins)
+  // Track last allow reason (for returning after all handlers pass)
+  let lastAllowReason: string | undefined;
+
+  // Run each handler in order (first deny wins, continue evaluating on allow)
   for (const handler of handlers) {
     // Only command handlers supported currently
     if (handler.type !== "command") {
@@ -132,16 +135,15 @@ export async function runStopHooks(input: StopHookInput): Promise<StopHookResult
         };
       }
 
-      // "allow" means let agent stop
+      // "allow" means let agent stop, but continue checking remaining handlers
       if (output.decision === "allow") {
-        // Early return on explicit allow
-        return { decision: "allow", reason: output.reason };
+        lastAllowReason = output.reason;
       }
     }
   }
 
   // All hooks passed without deny - allow stop
-  return { decision: "allow" };
+  return { decision: "allow", reason: lastAllowReason };
 }
 
 // =============================================================================

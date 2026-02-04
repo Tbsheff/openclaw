@@ -341,8 +341,11 @@ export async function dispatchReplyFromConfig(params: {
           return { queuedFinal, counts };
         }
 
-        // Apply modified prompt if provided
-        if (hookResult.modifiedPrompt && hookResult.modifiedPrompt !== promptContent) {
+        // Apply modified prompt if provided (allow empty string rewrites)
+        if (
+          hookResult.modifiedPrompt !== undefined &&
+          hookResult.modifiedPrompt !== promptContent
+        ) {
           // Modify the context with the new prompt
           if (typeof ctx.BodyForCommands === "string") {
             ctx.BodyForCommands = hookResult.modifiedPrompt;
