@@ -14,18 +14,15 @@ Key decisions:
 
 State:
 
-- Review in progress.
+- Re-review in progress; verdict pending.
 
 Done:
 
 - Read continuity ledger at start of turn.
-- Updated ledger for full-branch review.
-- Re-read updated .flow metadata, docs, and hook system files.
-- Reviewed multi-agent pipeline (Redis streams, orchestrator, DB, agents) for correctness.
 
 Now:
 
-- Document review findings and severity for branch diff vs main.
+- Re-read updated files and review branch changes vs main.
 
 Next:
 

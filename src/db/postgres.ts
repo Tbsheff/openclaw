@@ -104,11 +104,9 @@ export interface PostgresConfig {
 }
 
 const DEFAULT_CONFIG: PostgresConfig = {
-  host: "localhost",
-  port: 5433,
-  database: "openclaw",
-  user: "openclaw",
-  password: "openclaw",
+  // Use connection string to ensure correct port (5433)
+  connectionString:
+    process.env.PIPELINE_DATABASE_URL ?? "postgresql://openclaw:openclaw@localhost:5433/openclaw",
   maxConnections: 10,
   idleTimeout: 30000,
 };

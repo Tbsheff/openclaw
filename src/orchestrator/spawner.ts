@@ -24,6 +24,7 @@ export interface AgentProcess {
 export interface SpawnerConfig {
   agentRunnerPath?: string;
   nodeArgs?: string[];
+  devMode?: boolean; // Use tsx instead of node
 }
 
 // =============================================================================
@@ -34,11 +35,16 @@ export class Spawner extends EventEmitter {
   private agents: Map<string, AgentProcess> = new Map();
   private readonly agentRunnerPath: string;
   private readonly nodeArgs: string[];
+  private readonly devMode: boolean;
 
   constructor(config: SpawnerConfig = {}) {
     super();
+    this.devMode = config.devMode ?? process.env.NODE_ENV !== "production";
     this.agentRunnerPath =
-      config.agentRunnerPath ?? join(process.cwd(), "dist/agents/agent-runner.js");
+      config.agentRunnerPath ??
+      (this.devMode
+        ? join(process.cwd(), "src/agents/agent-runner.ts")
+        : join(process.cwd(), "dist/agents/agent-runner.js"));
     this.nodeArgs = config.nodeArgs ?? [];
   }
 
@@ -54,7 +60,13 @@ export class Spawner extends EventEmitter {
 
     console.log(`[spawner] Spawning ${role} agent: ${id}`);
 
-    const child = spawn("node", [...this.nodeArgs, this.agentRunnerPath, role], {
+    // Use tsx in dev mode for TypeScript support
+    const command = this.devMode ? "node" : "node";
+    const args = this.devMode
+      ? ["--import", "tsx", ...this.nodeArgs, this.agentRunnerPath, role]
+      : [...this.nodeArgs, this.agentRunnerPath, role];
+
+    const child = spawn(command, args, {
       env: {
         ...process.env,
         AGENT_INSTANCE_ID: id,
