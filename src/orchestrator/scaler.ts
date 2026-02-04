@@ -161,14 +161,20 @@ export class Scaler extends EventEmitter {
   private async checkRoleScaling(role: AgentRole): Promise<void> {
     const config = this.scalingConfigs[role];
     const currentCount = this.spawner.countByRole(role);
-    const pending = await this.redis.getPendingInfo(role);
-    const queueDepth = pending.count;
+    // Use total backlog (pending + undelivered lag) for accurate queue depth
+    const backlog = await this.redis.getQueueBacklog(role);
+    const queueDepth = backlog.total;
 
     // Scale up if queue is deep and we're under max
-    if (queueDepth > config.scaleUpThreshold && currentCount < config.maxInstances) {
+    // For roles with minInstances: 0, also scale up if there's ANY work
+    const shouldScaleUp =
+      (queueDepth > config.scaleUpThreshold || (config.minInstances === 0 && queueDepth > 0)) &&
+      currentCount < config.maxInstances;
+
+    if (shouldScaleUp) {
       const toSpawn = Math.min(
         config.maxInstances - currentCount,
-        Math.ceil(queueDepth / config.scaleUpThreshold),
+        Math.max(1, Math.ceil(queueDepth / config.scaleUpThreshold)),
       );
 
       for (let i = 0; i < toSpawn; i++) {
@@ -176,7 +182,7 @@ export class Scaler extends EventEmitter {
         this.spawner.spawn(role, instanceId);
         this.emit("scaleUp", { role, instanceId, queueDepth, newCount: currentCount + i + 1 });
         console.log(
-          `[scaler] Scaled up ${role} (queue=${queueDepth}, instances=${currentCount + i + 1})`,
+          `[scaler] Scaled up ${role} (queue=${queueDepth}, pending=${backlog.pending}, lag=${backlog.lag}, instances=${currentCount + i + 1})`,
         );
       }
     }

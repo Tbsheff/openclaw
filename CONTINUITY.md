@@ -1,6 +1,6 @@
 Goal (incl. success criteria):
 
-- Re-review updated Claude hooks docs/changelog changes and deliver Carmack-level verdict.
+- Review all changes on current branch vs main and deliver Carmack-level verdict.
 
 Constraints/Assumptions:
 
@@ -14,21 +14,22 @@ Key decisions:
 
 State:
 
-- Re-review complete; verdict ready.
+- Review in progress.
 
 Done:
 
 - Read continuity ledger at start of turn.
-- Updated ledger for docs/changelog re-review.
-- Re-read updated docs/changelog files from disk.
+- Updated ledger for full-branch review.
+- Re-read updated .flow metadata, docs, and hook system files.
+- Reviewed multi-agent pipeline (Redis streams, orchestrator, DB, agents) for correctness.
 
 Now:
 
-- Deliver implementation review findings and verdict.
+- Document review findings and severity for branch diff vs main.
 
 Next:
 
-- None.
+- Deliver review findings and verdict.
 
 Open questions (UNCONFIRMED if needed):
 
@@ -37,6 +38,11 @@ Open questions (UNCONFIRMED if needed):
 Working set (files/ids/commands):
 
 - `CONTINUITY.md`
-- `.flow/tasks/fn-1-add-claude-code-style-hooks-system.7.md`
+- `.flow/*` (epics/specs/tasks/checkpoint)
 - `CHANGELOG.md`
 - `docs/hooks.md`
+- `src/hooks/claude-style/*`
+- `src/agents/*` (hook integrations, orchestrator)
+- `src/orchestrator/*`
+- `src/events/*`
+- `src/db/*`

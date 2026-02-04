@@ -198,6 +198,7 @@ export class RedisStreams {
   /**
    * Subscribe to events for a specific agent role.
    * Calls handler for each message. Handler should throw to trigger retry.
+   * Also processes pending messages (recovered from crashes) on each loop iteration.
    */
   async subscribe(role: AgentRole, handler: MessageHandler): Promise<void> {
     await this.ensureConsumerGroup(role);
@@ -205,11 +206,19 @@ export class RedisStreams {
 
     // Use separate connection for blocking reads
     this.subscriber = this.redis.duplicate();
+    let loopCount = 0;
 
     while (!this.closed) {
       try {
+        // Every 10 iterations, also check for pending messages (crash recovery)
+        // This handles messages that were delivered to this consumer but not acked
+        if (loopCount % 10 === 0) {
+          await this.processPendingMessages(role, handler);
+        }
+        loopCount++;
+
         // XREADGROUP with BLOCK for efficient waiting
-        // > means only new messages not yet delivered to this consumer
+        // > means only new messages not yet delivered to any consumer in this group
         const result = await this.subscriber.xreadgroup(
           "GROUP",
           group,
@@ -257,6 +266,29 @@ export class RedisStreams {
         console.error("[RedisStreams] Subscribe error:", (err as Error).message);
         // Brief pause before retry
         await this.sleep(1000);
+      }
+    }
+  }
+
+  /**
+   * Process pending messages for this consumer (crash recovery).
+   */
+  private async processPendingMessages(role: AgentRole, handler: MessageHandler): Promise<void> {
+    const pending = await this.readPendingWithIds(role, 50);
+    if (pending.length === 0) return;
+
+    console.log(`[RedisStreams] Processing ${pending.length} pending messages for ${role}`);
+
+    for (const { streamId, message } of pending) {
+      try {
+        await handler(message);
+        await this.ack(role, streamId);
+      } catch (err) {
+        console.error(
+          `[RedisStreams] Handler error for pending ${streamId}:`,
+          (err as Error).message,
+        );
+        await this.retry(role, streamId, message);
       }
     }
   }
@@ -312,6 +344,7 @@ export class RedisStreams {
   /**
    * Retry a failed message with backoff.
    * Moves to DLQ after max retries.
+   * Re-publishes BEFORE ack to prevent message loss on crash.
    */
   async retry(role: AgentRole, streamId: string, message: StreamMessage): Promise<void> {
     const newAttempt = message.attempt + 1;
@@ -321,14 +354,12 @@ export class RedisStreams {
       return;
     }
 
-    // Ack original message
-    await this.ack(role, streamId);
-
     // Wait for backoff delay
     const delay = RETRY_DELAYS_MS[newAttempt - 2] ?? RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1];
     await this.sleep(delay);
 
-    // Re-publish with incremented attempt
+    // Re-publish with incremented attempt FIRST (before ack)
+    // This ensures message isn't lost if process crashes during retry
     await this.redis.xadd(
       STREAM_NAME,
       "*",
@@ -349,6 +380,9 @@ export class RedisStreams {
       "created_at",
       message.created_at,
     );
+
+    // Only ack AFTER successful re-publish
+    await this.ack(role, streamId);
   }
 
   /**
@@ -398,11 +432,13 @@ export class RedisStreams {
 
   /**
    * Reclaim orphaned messages (stuck with crashed consumers).
-   * Returns count of reclaimed messages.
+   * Returns the reclaimed messages so they can be processed.
    */
-  async reclaimOrphans(role: AgentRole): Promise<number> {
+  async reclaimOrphans(
+    role: AgentRole,
+  ): Promise<Array<{ streamId: string; message: StreamMessage }>> {
     const group = getConsumerGroup(role);
-    let reclaimed = 0;
+    const reclaimed: Array<{ streamId: string; message: StreamMessage }> = [];
 
     try {
       // XAUTOCLAIM: claim messages idle for > threshold
@@ -419,10 +455,16 @@ export class RedisStreams {
 
       if (result && Array.isArray(result) && result.length >= 2) {
         const claimed = result[1] as Array<[string, string[]]>;
-        reclaimed = claimed.length;
 
-        if (reclaimed > 0) {
-          console.log(`[RedisStreams] Reclaimed ${reclaimed} orphaned messages for ${role}`);
+        for (const [streamId, fields] of claimed) {
+          const message = this.parseMessage(fields);
+          if (message && message.target_role === role) {
+            reclaimed.push({ streamId, message });
+          }
+        }
+
+        if (reclaimed.length > 0) {
+          console.log(`[RedisStreams] Reclaimed ${reclaimed.length} orphaned messages for ${role}`);
         }
       }
     } catch (err) {
@@ -463,6 +505,84 @@ export class RedisStreams {
     } catch {
       return { count: 0, messages: [] };
     }
+  }
+
+  /**
+   * Get total queue backlog for a role (pending + undelivered).
+   * Uses XINFO GROUPS to get lag (undelivered messages).
+   */
+  async getQueueBacklog(role: AgentRole): Promise<{
+    pending: number;
+    lag: number;
+    total: number;
+  }> {
+    const group = getConsumerGroup(role);
+
+    try {
+      // XINFO GROUPS returns info about consumer groups including lag
+      const result = await this.redis.xinfo("GROUPS", STREAM_NAME);
+
+      let lag = 0;
+      let pending = 0;
+
+      if (Array.isArray(result)) {
+        for (const groupInfo of result) {
+          // groupInfo is an array of [key, value, key, value, ...]
+          if (Array.isArray(groupInfo)) {
+            const info: Record<string, unknown> = {};
+            for (let i = 0; i < groupInfo.length; i += 2) {
+              info[groupInfo[i] as string] = groupInfo[i + 1];
+            }
+            if (info.name === group) {
+              lag = (info.lag as number) ?? 0;
+              pending = (info.pending as number) ?? 0;
+              break;
+            }
+          }
+        }
+      }
+
+      return { pending, lag, total: pending + lag };
+    } catch {
+      // Fallback to just pending count
+      const pendingInfo = await this.getPendingInfo(role);
+      return { pending: pendingInfo.count, lag: 0, total: pendingInfo.count };
+    }
+  }
+
+  /**
+   * Read pending messages with their stream IDs (for recovery).
+   */
+  async readPendingWithIds(
+    role: AgentRole,
+    count = 100,
+  ): Promise<Array<{ streamId: string; message: StreamMessage }>> {
+    const group = getConsumerGroup(role);
+    const results: Array<{ streamId: string; message: StreamMessage }> = [];
+
+    // 0 means read from start of pending entries
+    const result = await this.redis.xreadgroup(
+      "GROUP",
+      group,
+      this.consumerName,
+      "COUNT",
+      count,
+      "STREAMS",
+      STREAM_NAME,
+      "0",
+    );
+
+    if (!result) return results;
+
+    for (const [, entries] of result) {
+      for (const [streamId, fields] of entries) {
+        const message = this.parseMessage(fields as string[]);
+        if (message && message.target_role === role) {
+          results.push({ streamId, message });
+        }
+      }
+    }
+    return results;
   }
 
   // ===========================================================================

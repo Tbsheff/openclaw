@@ -139,8 +139,9 @@ export abstract class BaseAgent {
 
   /**
    * Handle incoming message - fetch work item and delegate to subclass.
+   * @param streamId - optional stream ID for acking on success
    */
-  private async handleMessage(message: StreamMessage): Promise<void> {
+  private async handleMessage(message: StreamMessage, streamId?: string): Promise<void> {
     // Verify message is for this agent
     if (message.target_role !== this.role) {
       return;
@@ -155,6 +156,7 @@ export abstract class BaseAgent {
 
     // Track current work for heartbeat
     this.currentWorkItemId = workItem.id;
+    let runId: string | null = null;
 
     try {
       // Create agent run record
@@ -164,6 +166,7 @@ export abstract class BaseAgent {
         agent_instance: this.instanceId,
         event_id: message.id,
       });
+      runId = run.id;
 
       // Start the run
       await this.db.startAgentRun(run.id);
@@ -177,10 +180,13 @@ export abstract class BaseAgent {
       const errorMsg = (err as Error).message;
       console.error(`[${this.role}] Error processing ${workItem.id}:`, errorMsg);
 
-      // Mark work as failed
-      await this.db.updateWorkStatus(workItem.id, "failed", errorMsg);
+      // Mark run as failed (NOT the work item - let retry mechanism handle that)
+      if (runId) {
+        await this.db.completeAgentRun(runId, false, undefined, errorMsg);
+      }
 
-      // Re-throw to trigger retry
+      // Re-throw to trigger retry in Redis layer
+      // Work item status will be set to failed only after max retries (in DLQ handler)
       throw err;
     } finally {
       this.currentWorkItemId = null;
@@ -189,11 +195,25 @@ export abstract class BaseAgent {
 
   /**
    * Process pending messages from previous run.
+   * These are messages that were delivered but not acked before the previous instance crashed.
    */
   private async processPendingMessages(): Promise<void> {
-    const pending = await this.redis.readPending(this.role);
-    if (pending.length > 0) {
-      console.log(`[${this.role}] Found ${pending.length} pending messages`);
+    const pending = await this.redis.readPendingWithIds(this.role);
+    if (pending.length === 0) return;
+
+    console.log(`[${this.role}] Processing ${pending.length} pending messages from previous run`);
+
+    for (const { streamId, message } of pending) {
+      try {
+        await this.handleMessage(message, streamId);
+        await this.redis.ack(this.role, streamId);
+      } catch (err) {
+        console.error(
+          `[${this.role}] Failed to process pending message ${streamId}:`,
+          (err as Error).message,
+        );
+        // Retry mechanism will handle it via the normal subscribe loop
+      }
     }
   }
 
