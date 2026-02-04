@@ -6,8 +6,10 @@
  */
 
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { resolveApiKeyForProvider } from "../agents/model-auth.js";
 
 // =============================================================================
 // TYPES
@@ -273,9 +275,52 @@ function zodToJsonSchema(schema: z.ZodType): Record<string, unknown> {
 // =============================================================================
 
 let defaultClient: AnthropicClient | null = null;
+let resolvedApiKey: string | null = null;
+
+/**
+ * Resolve API key from auth-profiles (supports OAuth tokens from setup-token).
+ */
+async function resolveAnthropicApiKey(): Promise<string> {
+  if (resolvedApiKey) {
+    return resolvedApiKey;
+  }
+
+  try {
+    const auth = await resolveApiKeyForProvider({ provider: "anthropic" });
+    if (auth.apiKey) {
+      resolvedApiKey = auth.apiKey;
+      return auth.apiKey;
+    }
+  } catch {
+    // Fall through to env var
+  }
+
+  // Fallback to environment variable
+  const envKey = process.env.ANTHROPIC_API_KEY;
+  if (envKey) {
+    resolvedApiKey = envKey;
+    return envKey;
+  }
+
+  throw new Error(
+    "ANTHROPIC_API_KEY is required. Run 'openclaw setup-token' to authenticate via OAuth, or set the ANTHROPIC_API_KEY environment variable.",
+  );
+}
+
+/**
+ * Get or create the default Anthropic client (async version that supports auth-profiles).
+ */
+export async function createLLM(config?: LLMConfig): Promise<AnthropicClient> {
+  if (!defaultClient) {
+    const apiKey = config?.apiKey ?? (await resolveAnthropicApiKey());
+    defaultClient = new AnthropicClient({ ...config, apiKey });
+  }
+  return defaultClient;
+}
 
 /**
  * Get or create the default Anthropic client.
+ * @deprecated Use createLLM() instead for auth-profiles support.
  */
 export function getLLM(config?: LLMConfig): AnthropicClient {
   if (!defaultClient) {

@@ -19,7 +19,7 @@ import { join, extname } from "node:path";
 import { z } from "zod";
 import type { WorkItem } from "../../db/postgres.js";
 import type { StreamMessage } from "../../events/types.js";
-import { getLLM, type AnthropicClient } from "../../llm/anthropic.js";
+import { createLLM, type AnthropicClient } from "../../llm/anthropic.js";
 import { BaseAgent, type AgentConfig } from "../base-agent.js";
 
 // =============================================================================
@@ -76,7 +76,7 @@ interface RAGContext {
 // =============================================================================
 
 export class DomainExpertAgent extends BaseAgent {
-  private llm: AnthropicClient;
+  private llm: AnthropicClient | null = null;
   private systemPrompt: string | null = null;
   private domainDocsCache: DomainDocument[] | null = null;
 
@@ -86,7 +86,16 @@ export class DomainExpertAgent extends BaseAgent {
       instanceId,
     };
     super(config);
-    this.llm = getLLM();
+  }
+
+  /**
+   * Get or create the LLM client (lazy initialization for auth-profiles support).
+   */
+  private async getLLMClient(): Promise<AnthropicClient> {
+    if (!this.llm) {
+      this.llm = await createLLM();
+    }
+    return this.llm;
   }
 
   /**
@@ -96,7 +105,8 @@ export class DomainExpertAgent extends BaseAgent {
     if (this.systemPrompt) {
       return this.systemPrompt;
     }
-    this.systemPrompt = await this.llm.loadSystemPrompt("domain-expert");
+    const llm = await this.getLLMClient();
+    this.systemPrompt = await llm.loadSystemPrompt("domain-expert");
     return this.systemPrompt;
   }
 
@@ -229,7 +239,8 @@ Provide your assessment using the domain_review tool.`;
     console.log(`[domain-expert] Calling LLM for domain review...`);
 
     try {
-      const review = await this.llm.completeWithSchema({
+      const llm = await this.getLLMClient();
+      const review = await llm.completeWithSchema({
         systemPrompt,
         messages: [{ role: "user", content: userPrompt }],
         schema: DomainReviewSchema,

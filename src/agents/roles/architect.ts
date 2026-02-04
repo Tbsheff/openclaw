@@ -10,7 +10,7 @@ import { join, dirname } from "node:path";
 import { z } from "zod";
 import type { WorkItem } from "../../db/postgres.js";
 import type { StreamMessage } from "../../events/types.js";
-import { getLLM } from "../../llm/anthropic.js";
+import { createLLM, type AnthropicClient } from "../../llm/anthropic.js";
 import { BaseAgent, type AgentConfig } from "../base-agent.js";
 
 // =============================================================================
@@ -64,6 +64,7 @@ type TaskSpec = z.infer<typeof TaskSpecSchema>;
 // =============================================================================
 
 export class ArchitectAgent extends BaseAgent {
+  private llm: AnthropicClient | null = null;
   private systemPrompt: string | null = null;
 
   constructor(instanceId?: string) {
@@ -75,11 +76,21 @@ export class ArchitectAgent extends BaseAgent {
   }
 
   /**
+   * Get or create the LLM client (lazy initialization for auth-profiles support).
+   */
+  private async getLLMClient(): Promise<AnthropicClient> {
+    if (!this.llm) {
+      this.llm = await createLLM();
+    }
+    return this.llm;
+  }
+
+  /**
    * Load the architect system prompt.
    */
   private async getSystemPrompt(): Promise<string> {
     if (!this.systemPrompt) {
-      const llm = getLLM();
+      const llm = await this.getLLMClient();
       this.systemPrompt = await llm.loadSystemPrompt("architect");
       if (!this.systemPrompt) {
         throw new Error("Failed to load architect system prompt");
@@ -264,7 +275,7 @@ ${task.estimated_complexity}
     tasks: TaskSpec[];
   }> {
     const systemPrompt = await this.getSystemPrompt();
-    const llm = getLLM();
+    const llm = await this.getLLMClient();
 
     // Build the user prompt
     const userPrompt = `Analyze the following epic specification and generate a technical specification with task breakdown.

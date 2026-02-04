@@ -13,7 +13,7 @@ import { join, dirname } from "node:path";
 import { z } from "zod";
 import type { WorkItem } from "../../db/postgres.js";
 import type { StreamMessage } from "../../events/types.js";
-import { getLLM, type AnthropicClient } from "../../llm/anthropic.js";
+import { createLLM, type AnthropicClient } from "../../llm/anthropic.js";
 import { BaseAgent, type AgentConfig } from "../base-agent.js";
 
 // =============================================================================
@@ -44,7 +44,7 @@ type EpicSpec = z.infer<typeof EpicSpecSchema>;
 // =============================================================================
 
 export class PMAgent extends BaseAgent {
-  private llm: AnthropicClient;
+  private llm: AnthropicClient | null = null;
   private systemPrompt: string | null = null;
 
   constructor(instanceId?: string) {
@@ -53,7 +53,16 @@ export class PMAgent extends BaseAgent {
       instanceId,
     };
     super(config);
-    this.llm = getLLM();
+  }
+
+  /**
+   * Get or create the LLM client (lazy initialization for auth-profiles support).
+   */
+  private async getLLMClient(): Promise<AnthropicClient> {
+    if (!this.llm) {
+      this.llm = await createLLM();
+    }
+    return this.llm;
   }
 
   /**
@@ -63,7 +72,8 @@ export class PMAgent extends BaseAgent {
     if (this.systemPrompt) {
       return this.systemPrompt;
     }
-    this.systemPrompt = await this.llm.loadSystemPrompt("pm");
+    const llm = await this.getLLMClient();
+    this.systemPrompt = await llm.loadSystemPrompt("pm");
     return this.systemPrompt;
   }
 
@@ -126,9 +136,10 @@ export class PMAgent extends BaseAgent {
    */
   private async generateEpicSpec(goal: string): Promise<EpicSpec> {
     const systemPrompt = await this.getSystemPrompt();
+    const llm = await this.getLLMClient();
 
     try {
-      const epicSpec = await this.llm.completeWithSchema({
+      const epicSpec = await llm.completeWithSchema({
         systemPrompt,
         messages: [
           {
