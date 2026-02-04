@@ -11,7 +11,8 @@ import type { Command } from "commander";
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { AgentRole } from "../events/types.js";
 import { formatDocsLink } from "../terminal/links.js";
 import { renderTable, type TableColumn } from "../terminal/table.js";
@@ -27,11 +28,22 @@ const ORCHESTRATOR_LOG_FILE = join(homedir(), ".openclaw", "orchestrator.log");
 
 // Use compiled dist in production, src with tsx in development
 function getOrchestratorEntry(): { entry: string; useTsx: boolean } {
-  const distEntry = join(process.cwd(), "dist", "orchestrator", "index.js");
-  if (existsSync(distEntry)) {
-    return { entry: distEntry, useTsx: false };
+  // First, try to find the orchestrator entry relative to this module's location
+  // (works for globally installed packages)
+  const thisDir = dirname(fileURLToPath(import.meta.url));
+  const packageDistEntry = join(thisDir, "orchestrator", "index.js");
+  if (existsSync(packageDistEntry)) {
+    return { entry: packageDistEntry, useTsx: false };
   }
-  return { entry: "src/orchestrator/index.ts", useTsx: true };
+
+  // Fallback: try relative to cwd (for development)
+  const cwdDistEntry = join(process.cwd(), "dist", "orchestrator", "index.js");
+  if (existsSync(cwdDistEntry)) {
+    return { entry: cwdDistEntry, useTsx: false };
+  }
+
+  // Last resort: source file with tsx (development only)
+  return { entry: join(process.cwd(), "src", "orchestrator", "index.ts"), useTsx: true };
 }
 
 // =============================================================================

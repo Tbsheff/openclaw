@@ -6,7 +6,9 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { join } from "node:path";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { AgentRole } from "../events/types.js";
 
 // =============================================================================
@@ -40,12 +42,39 @@ export class Spawner extends EventEmitter {
   constructor(config: SpawnerConfig = {}) {
     super();
     this.devMode = config.devMode ?? process.env.NODE_ENV !== "production";
-    this.agentRunnerPath =
-      config.agentRunnerPath ??
-      (this.devMode
-        ? join(process.cwd(), "src/agents/agent-runner.ts")
-        : join(process.cwd(), "dist/agents/agent-runner.js"));
+    this.agentRunnerPath = config.agentRunnerPath ?? this.resolveAgentRunnerPath();
     this.nodeArgs = config.nodeArgs ?? [];
+  }
+
+  /**
+   * Resolve the agent-runner.js path, checking package installation first.
+   */
+  private resolveAgentRunnerPath(): string {
+    // First, try to find agent-runner relative to this module's location
+    // (works for globally installed packages)
+    const thisDir = dirname(fileURLToPath(import.meta.url));
+    const packageDistPath = join(thisDir, "..", "agents", "agent-runner.js");
+    if (existsSync(packageDistPath)) {
+      return packageDistPath;
+    }
+
+    // Fallback: try relative to cwd (for development)
+    if (this.devMode) {
+      const cwdSrcPath = join(process.cwd(), "src/agents/agent-runner.ts");
+      if (existsSync(cwdSrcPath)) {
+        return cwdSrcPath;
+      }
+    }
+
+    const cwdDistPath = join(process.cwd(), "dist/agents/agent-runner.js");
+    if (existsSync(cwdDistPath)) {
+      return cwdDistPath;
+    }
+
+    // Last resort: return the expected path (will fail at runtime with clear error)
+    return this.devMode
+      ? join(process.cwd(), "src/agents/agent-runner.ts")
+      : join(process.cwd(), "dist/agents/agent-runner.js");
   }
 
   /**

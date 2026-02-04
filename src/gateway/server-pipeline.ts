@@ -10,7 +10,8 @@
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { loadConfig } from "../config/config.js";
 
 // =============================================================================
@@ -185,10 +186,21 @@ function isProcessRunning(pid: number): boolean {
 }
 
 function getOrchestratorEntry(cwd: string): { entry: string; useTsx: boolean } {
-  const distEntry = join(cwd, "dist", "orchestrator", "index.js");
-  if (existsSync(distEntry)) {
-    return { entry: distEntry, useTsx: false };
+  // First, try to find the orchestrator entry relative to this module's location
+  // (works for globally installed packages)
+  const thisDir = dirname(fileURLToPath(import.meta.url));
+  const packageDistEntry = join(thisDir, "orchestrator", "index.js");
+  if (existsSync(packageDistEntry)) {
+    return { entry: packageDistEntry, useTsx: false };
   }
+
+  // Fallback: try relative to cwd (for development)
+  const cwdDistEntry = join(cwd, "dist", "orchestrator", "index.js");
+  if (existsSync(cwdDistEntry)) {
+    return { entry: cwdDistEntry, useTsx: false };
+  }
+
+  // Last resort: source file with tsx (development only)
   return { entry: join(cwd, "src", "orchestrator", "index.ts"), useTsx: true };
 }
 
