@@ -161,14 +161,18 @@ export class Scaler extends EventEmitter {
   private async checkRoleScaling(role: AgentRole): Promise<void> {
     const config = this.scalingConfigs[role];
     const currentCount = this.spawner.countByRole(role);
-    // Use pending count (actual unprocessed work) - not XLEN which grows indefinitely
+    // Use pending + lag for scaling decisions
+    // - pending = messages being processed by workers
+    // - lag = messages not yet delivered (waiting to be read)
     const backlog = await this.redis.getQueueBacklog(role);
-    const queueDepth = backlog.pending;
+    const totalWork = backlog.pending + backlog.lag;
 
     // Scale up if queue is deep and we're under max
-    // For roles with minInstances: 0, also scale up if there's ANY work
+    // For roles with minInstances: 0, scale up if there's ANY work (pending or lag)
+    // This prevents pipeline stalls when work arrives for idle-by-default roles
     const shouldScaleUp =
-      (queueDepth > config.scaleUpThreshold || (config.minInstances === 0 && queueDepth > 0)) &&
+      (totalWork > config.scaleUpThreshold ||
+        (config.minInstances === 0 && currentCount === 0 && totalWork > 0)) &&
       currentCount < config.maxInstances;
 
     if (shouldScaleUp) {
@@ -180,15 +184,15 @@ export class Scaler extends EventEmitter {
       for (let i = 0; i < toSpawn; i++) {
         const instanceId = `${role}-${Date.now()}-${i}`;
         this.spawner.spawn(role, instanceId);
-        this.emit("scaleUp", { role, instanceId, queueDepth, newCount: currentCount + i + 1 });
+        this.emit("scaleUp", { role, instanceId, totalWork, newCount: currentCount + i + 1 });
         console.log(
-          `[scaler] Scaled up ${role} (queue=${queueDepth}, pending=${backlog.pending}, lag=${backlog.lag}, instances=${currentCount + i + 1})`,
+          `[scaler] Scaled up ${role} (total=${totalWork}, pending=${backlog.pending}, lag=${backlog.lag}, instances=${currentCount + i + 1})`,
         );
       }
     }
 
     // Scale down if queue is empty and we're over min
-    if (queueDepth === 0 && currentCount > config.minInstances) {
+    if (totalWork === 0 && currentCount > config.minInstances) {
       const agents = this.spawner.getByRole(role);
 
       for (const agent of agents) {

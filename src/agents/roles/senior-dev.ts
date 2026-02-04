@@ -78,6 +78,7 @@ export class SeniorDevAgent extends BaseAgent {
 
       // Mark for review and notify staff-engineer
       await this.updateWorkStatus(workItem.id, "review");
+      await this.assignToRole(workItem.id, "staff-engineer");
       await this.publish({
         workItemId: workItem.id,
         eventType: "work_completed",

@@ -9,7 +9,7 @@
 
 import type { Command } from "commander";
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AgentRole } from "../events/types.js";
@@ -24,7 +24,15 @@ import { createCliProgress } from "./progress.js";
 
 const ORCHESTRATOR_PID_FILE = join(homedir(), ".openclaw", "orchestrator.pid");
 const ORCHESTRATOR_LOG_FILE = join(homedir(), ".openclaw", "orchestrator.log");
-const ORCHESTRATOR_ENTRY = "src/orchestrator/index.ts";
+
+// Use compiled dist in production, src with tsx in development
+function getOrchestratorEntry(): { entry: string; useTsx: boolean } {
+  const distEntry = join(process.cwd(), "dist", "orchestrator", "index.js");
+  if (existsSync(distEntry)) {
+    return { entry: distEntry, useTsx: false };
+  }
+  return { entry: "src/orchestrator/index.ts", useTsx: true };
+}
 
 // =============================================================================
 // HELPERS
@@ -46,7 +54,6 @@ function getPidFromFile(): number | null {
 function writePidFile(pid: number): void {
   const dir = join(homedir(), ".openclaw");
   if (!existsSync(dir)) {
-    const { mkdirSync } = require("node:fs");
     mkdirSync(dir, { recursive: true });
   }
   writeFileSync(ORCHESTRATOR_PID_FILE, pid.toString(), "utf-8");
@@ -216,10 +223,17 @@ async function runOrchestratorStart(opts: { json: boolean; foreground: boolean }
   const progress = createCliProgress({ label: "Starting orchestrator..." });
 
   try {
-    const child = spawn("node", ["--import", "tsx", ORCHESTRATOR_ENTRY], {
+    const { entry, useTsx } = getOrchestratorEntry();
+    const args = useTsx ? ["--import", "tsx", entry] : [entry];
+
+    // Open log file for stdout/stderr to prevent buffer deadlock
+    const { openSync } = await import("node:fs");
+    const logFd = openSync(ORCHESTRATOR_LOG_FILE, "a");
+
+    const child = spawn("node", args, {
       cwd: process.cwd(),
       detached: true,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["ignore", logFd, logFd], // Redirect both stdout and stderr to log file
       env: {
         ...process.env,
         NODE_ENV: process.env.NODE_ENV ?? "development",
@@ -230,17 +244,11 @@ async function runOrchestratorStart(opts: { json: boolean; foreground: boolean }
       throw new Error("Failed to spawn orchestrator process");
     }
 
-    // Capture initial output for error detection
-    let stderr = "";
-    child.stderr?.on("data", (data) => {
-      stderr += data.toString();
-    });
-
     // Wait a moment to see if it crashes immediately
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
     if (!isProcessRunning(child.pid)) {
-      throw new Error(`Orchestrator failed to start: ${stderr || "Unknown error"}`);
+      throw new Error(`Orchestrator failed to start. Check logs: ${ORCHESTRATOR_LOG_FILE}`);
     }
 
     writePidFile(child.pid);
