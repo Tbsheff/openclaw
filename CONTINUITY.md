@@ -1,6 +1,6 @@
 Goal (incl. success criteria):
 
-- Re-review updated PostToolUse/PostToolUseFailure hook integration + sanitization changes and deliver Carmack-level verdict.
+- Re-review updated Stop + UserPromptSubmit hook integration changes and deliver Carmack-level verdict.
 
 Constraints/Assumptions:
 
@@ -19,7 +19,7 @@ State:
 Done:
 
 - Read continuity ledger at start of turn.
-- Re-read updated files for post-tool-use hooks + sanitization.
+- Re-read updated stop/user-prompt hook files.
 
 Now:
 
@@ -36,12 +36,11 @@ Open questions (UNCONFIRMED if needed):
 Working set (files/ids/commands):
 
 - `CONTINUITY.md`
-- `.flow/tasks/fn-1-add-claude-code-style-hooks-system.3.md`
-- `src/agents/pi-embedded-subscribe.handlers.tools.ts`
-- `src/agents/pi-embedded-subscribe.handlers.types.ts`
-- `src/agents/pi-embedded-subscribe.ts`
-- `src/hooks/claude-style/hooks/post-tool-use.ts`
-- `src/hooks/claude-style/hooks/post-tool-use.test.ts`
-- `src/hooks/claude-style/sanitize.ts`
-- `src/hooks/claude-style/sanitize.test.ts`
+- `.flow/tasks/fn-1-add-claude-code-style-hooks-system.4.md`
+- `src/agents/pi-embedded-runner/run/attempt.ts`
+- `src/auto-reply/reply/dispatch-from-config.ts`
+- `src/hooks/claude-style/hooks/stop.ts`
+- `src/hooks/claude-style/hooks/stop.test.ts`
+- `src/hooks/claude-style/hooks/user-prompt.ts`
+- `src/hooks/claude-style/hooks/user-prompt.test.ts`
 - `src/hooks/claude-style/index.ts`

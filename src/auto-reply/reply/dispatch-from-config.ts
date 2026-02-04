@@ -307,10 +307,15 @@ export async function dispatchReplyFromConfig(params: {
           cwd: process.cwd(),
         });
 
-        if (hookResult.decision === "deny") {
+        if (hookResult.decision === "deny" || hookResult.decision === "ask") {
           // Block the message with an error response
+          // "ask" is treated as deny until an interactive confirmation path is implemented
+          const blockReason =
+            hookResult.decision === "ask"
+              ? (hookResult.reason ?? "Confirmation required")
+              : (hookResult.reason ?? "Message blocked by hook");
           const blockPayload = {
-            text: hookResult.reason ?? "Message blocked by hook",
+            text: blockReason,
           } satisfies ReplyPayload;
           let queuedFinal = false;
           if (shouldRouteToOriginating && originatingChannel && originatingTo) {
@@ -329,7 +334,9 @@ export async function dispatchReplyFromConfig(params: {
           }
           await dispatcher.waitForIdle();
           const counts = dispatcher.getQueuedCounts();
-          recordProcessed("completed", { reason: "hook_blocked" });
+          recordProcessed("completed", {
+            reason: hookResult.decision === "ask" ? "hook_ask" : "hook_blocked",
+          });
           markIdle("message_completed");
           return { queuedFinal, counts };
         }
