@@ -1,0 +1,14 @@
+{
+  "assignee": null,
+  "claim_note": "",
+  "claimed_at": null,
+  "created_at": "2026-02-04T16:12:32.145804Z",
+  "depends_on": ["fn-2-multi-agent-sdlc-pipeline-architecture.10"],
+  "epic": "fn-2-multi-agent-sdlc-pipeline-architecture",
+  "id": "fn-2-multi-agent-sdlc-pipeline-architecture.11",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-2-multi-agent-sdlc-pipeline-architecture.11.md",
+  "status": "todo",
+  "title": "CI Agent for PR and pipeline monitoring",
+  "updated_at": "2026-02-04T16:12:32.146014Z"
+}

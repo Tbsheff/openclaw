@@ -1,0 +1,14 @@
+{
+  "assignee": null,
+  "claim_note": "",
+  "claimed_at": null,
+  "created_at": "2026-02-04T16:12:32.372636Z",
+  "depends_on": ["fn-2-multi-agent-sdlc-pipeline-architecture.12"],
+  "epic": "fn-2-multi-agent-sdlc-pipeline-architecture",
+  "id": "fn-2-multi-agent-sdlc-pipeline-architecture.13",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-2-multi-agent-sdlc-pipeline-architecture.13.md",
+  "status": "todo",
+  "title": "Memory bootstrap from CLAUDE.md and git history",
+  "updated_at": "2026-02-04T16:12:32.372841Z"
+}

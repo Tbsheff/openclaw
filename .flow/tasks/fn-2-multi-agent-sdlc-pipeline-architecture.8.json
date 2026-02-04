@@ -1,0 +1,18 @@
+{
+  "assignee": null,
+  "claim_note": "",
+  "claimed_at": null,
+  "created_at": "2026-02-04T16:12:31.789585Z",
+  "depends_on": [
+    "fn-2-multi-agent-sdlc-pipeline-architecture.5",
+    "fn-2-multi-agent-sdlc-pipeline-architecture.6",
+    "fn-2-multi-agent-sdlc-pipeline-architecture.7"
+  ],
+  "epic": "fn-2-multi-agent-sdlc-pipeline-architecture",
+  "id": "fn-2-multi-agent-sdlc-pipeline-architecture.8",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-2-multi-agent-sdlc-pipeline-architecture.8.md",
+  "status": "todo",
+  "title": "CTO Review and Staff Engineer Agents",
+  "updated_at": "2026-02-04T16:12:31.789888Z"
+}

@@ -1,0 +1,14 @@
+{
+  "assignee": null,
+  "claim_note": "",
+  "claimed_at": null,
+  "created_at": "2026-02-04T16:12:32.498832Z",
+  "depends_on": ["fn-2-multi-agent-sdlc-pipeline-architecture.13"],
+  "epic": "fn-2-multi-agent-sdlc-pipeline-architecture",
+  "id": "fn-2-multi-agent-sdlc-pipeline-architecture.14",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-2-multi-agent-sdlc-pipeline-architecture.14.md",
+  "status": "todo",
+  "title": "Domain Expert Agent with RAG",
+  "updated_at": "2026-02-04T16:12:32.499024Z"
+}

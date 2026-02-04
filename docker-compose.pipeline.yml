@@ -1,0 +1,51 @@
+# Multi-Agent Pipeline Infrastructure
+# Redis Streams for event-driven communication + PostgreSQL for state persistence
+#
+# Usage:
+#   docker compose -f docker-compose.pipeline.yml up -d
+#   docker compose -f docker-compose.pipeline.yml down
+#
+# Ports:
+#   Redis: 6380 (avoids conflict with default 6379)
+#   PostgreSQL: 5433 (avoids conflict with default 5432)
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: openclaw-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - openclaw_redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: openclaw-postgres
+    environment:
+      POSTGRES_DB: openclaw
+      POSTGRES_USER: openclaw
+      POSTGRES_PASSWORD: openclaw
+    ports:
+      - "5433:5432"
+    volumes:
+      - openclaw_postgres_data:/var/lib/postgresql/data
+      - ./src/db/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openclaw -d openclaw"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  openclaw_redis_data:
+    driver: local
+  openclaw_postgres_data:
+    driver: local

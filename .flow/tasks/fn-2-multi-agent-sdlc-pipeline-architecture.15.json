@@ -1,0 +1,17 @@
+{
+  "assignee": null,
+  "claim_note": "",
+  "claimed_at": null,
+  "created_at": "2026-02-04T16:12:32.622467Z",
+  "depends_on": [
+    "fn-2-multi-agent-sdlc-pipeline-architecture.11",
+    "fn-2-multi-agent-sdlc-pipeline-architecture.14"
+  ],
+  "epic": "fn-2-multi-agent-sdlc-pipeline-architecture",
+  "id": "fn-2-multi-agent-sdlc-pipeline-architecture.15",
+  "priority": null,
+  "spec_path": ".flow/tasks/fn-2-multi-agent-sdlc-pipeline-architecture.15.md",
+  "status": "todo",
+  "title": "Documentation and CLI commands",
+  "updated_at": "2026-02-04T16:12:32.622715Z"
+}
