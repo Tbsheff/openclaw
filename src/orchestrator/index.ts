@@ -42,7 +42,7 @@ export class Orchestrator {
     this.orphanDetector = new OrphanDetector();
 
     // Wire up events
-    this.spawner.on("exit", ({ role, instanceId, code }) => {
+    this.spawner.on("exit", ({ role: _role, instanceId, code }) => {
       console.log(`[orchestrator] Agent ${instanceId} exited with code ${code}`);
     });
 
@@ -50,15 +50,15 @@ export class Orchestrator {
       console.log(`[orchestrator] Restarted ${role}: ${oldInstanceId} -> ${newInstanceId}`);
     });
 
-    this.healthMonitor.on("restartFailed", ({ role, instanceId, attempts }) => {
+    this.healthMonitor.on("restartFailed", ({ role, instanceId: _instanceId, attempts }) => {
       console.error(`[orchestrator] Failed to restart ${role} after ${attempts} attempts`);
     });
 
-    this.scaler.on("scaleUp", ({ role, instanceId, queueDepth }) => {
+    this.scaler.on("scaleUp", ({ role, instanceId: _instanceId, queueDepth }) => {
       console.log(`[orchestrator] Scaled up ${role} (queue depth: ${queueDepth})`);
     });
 
-    this.scaler.on("scaleDown", ({ role, instanceId, idleTime }) => {
+    this.scaler.on("scaleDown", ({ role, instanceId: _instanceId, idleTime }) => {
       console.log(`[orchestrator] Scaled down ${role} (idle: ${Math.round(idleTime / 1000)}s)`);
     });
 
@@ -131,7 +131,9 @@ export class Orchestrator {
    * Graceful shutdown.
    */
   async shutdown(): Promise<void> {
-    if (this.shutdownRequested) return;
+    if (this.shutdownRequested) {
+      return;
+    }
     this.shutdownRequested = true;
 
     console.log("[orchestrator] Shutting down...");

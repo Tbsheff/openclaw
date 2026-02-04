@@ -181,7 +181,7 @@ export class SeniorDevAgent extends BaseAgent {
   /**
    * Write tests based on task spec (TDD: tests first)
    */
-  private async writeTests(workItem: WorkItem, taskSpec: string): Promise<void> {
+  private async writeTests(workItem: WorkItem, _taskSpec: string): Promise<void> {
     // TODO: Use LLM to generate tests from task spec
     // For now, create a placeholder test file structure
 
@@ -197,7 +197,7 @@ export class SeniorDevAgent extends BaseAgent {
   /**
    * Write implementation to pass the tests
    */
-  private async writeImplementation(workItem: WorkItem, taskSpec: string): Promise<void> {
+  private async writeImplementation(_workItem: WorkItem, _taskSpec: string): Promise<void> {
     // TODO: Use LLM to implement code that passes tests
     console.log(`[senior-dev] Implementing based on task spec...`);
 
@@ -224,13 +224,6 @@ export class SeniorDevAgent extends BaseAgent {
    */
   private async runTests(): Promise<CommandResult> {
     return this.runCommand("pnpm", ["test"]);
-  }
-
-  /**
-   * Run lint/format checks
-   */
-  private async runLint(): Promise<CommandResult> {
-    return this.runCommand("pnpm", ["check"]);
   }
 
   /**
@@ -297,12 +290,24 @@ Implemented with TDD approach.`;
    */
   private inferCommitType(title: string): string {
     const lower = title.toLowerCase();
-    if (lower.includes("fix") || lower.includes("bug")) return "fix";
-    if (lower.includes("test")) return "test";
-    if (lower.includes("doc")) return "docs";
-    if (lower.includes("refactor")) return "refactor";
-    if (lower.includes("style") || lower.includes("format")) return "style";
-    if (lower.includes("chore") || lower.includes("update dep")) return "chore";
+    if (lower.includes("fix") || lower.includes("bug")) {
+      return "fix";
+    }
+    if (lower.includes("test")) {
+      return "test";
+    }
+    if (lower.includes("doc")) {
+      return "docs";
+    }
+    if (lower.includes("refactor")) {
+      return "refactor";
+    }
+    if (lower.includes("style") || lower.includes("format")) {
+      return "style";
+    }
+    if (lower.includes("chore") || lower.includes("update dep")) {
+      return "chore";
+    }
     return "feat";
   }
 

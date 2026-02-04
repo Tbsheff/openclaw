@@ -56,7 +56,7 @@ export class HealthMonitor extends EventEmitter {
     console.log("[health] Starting health monitor");
     this.checkInterval = setInterval(() => this.checkHealth(), this.checkIntervalMs);
     // Initial check
-    this.checkHealth();
+    void this.checkHealth();
   }
 
   /**

@@ -192,7 +192,7 @@ export class CIAgent extends BaseAgent {
   /**
    * Ensure branch exists and push any uncommitted changes
    */
-  private async ensureBranchAndPush(branchName: string, workItem: WorkItem): Promise<void> {
+  private async ensureBranchAndPush(branchName: string, _workItem: WorkItem): Promise<void> {
     // Safety check: verify working tree is clean before git operations
     const statusCheck = await this.runCommand("git", ["status", "--porcelain"]);
     if (statusCheck.stdout.trim()) {
@@ -431,7 +431,7 @@ ${workItem.description ?? ""}
    */
   private async attemptFix(
     workItem: WorkItem,
-    prUrl: string,
+    _prUrl: string,
     ciStatus: CIStatus,
     branchName: string,
   ): Promise<boolean> {
@@ -473,7 +473,9 @@ ${workItem.description ?? ""}
       "10",
     ]);
 
-    if (!runsResult.success) return null;
+    if (!runsResult.success) {
+      return null;
+    }
 
     try {
       const runs = JSON.parse(runsResult.stdout) as Array<{
@@ -486,7 +488,9 @@ ${workItem.description ?? ""}
       const matchingRun = runs.find(
         (r) => r.name.includes(checkName) || checkName.includes(r.name),
       );
-      if (!matchingRun) return null;
+      if (!matchingRun) {
+        return null;
+      }
 
       // Get logs for the run
       const logsResult = await this.runCommand("gh", [
@@ -508,7 +512,7 @@ ${workItem.description ?? ""}
   private async analyzeAndFix(
     checkName: string,
     logs: string,
-    workItem: WorkItem,
+    _workItem: WorkItem,
   ): Promise<boolean> {
     // Common failure patterns and fixes
     const lowerLogs = logs.toLowerCase();

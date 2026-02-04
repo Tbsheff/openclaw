@@ -262,6 +262,23 @@ openclaw orchestrator stop --force
 - `--deep`: Show agent runs and history
 - `--json`: Output JSON
 
+### Pipeline Tool (Agent API)
+
+The main OpenClaw agent can also interact with the pipeline directly using the `pipeline` tool:
+
+```
+# Submit a goal
+pipeline action:submit goal:"Add OAuth authentication" priority:5
+
+# Check status
+pipeline action:status workItemId:abc-123-uuid deep:true
+
+# List recent work
+pipeline action:list limit:10
+```
+
+This allows the agent to delegate complex work to the pipeline without shelling out to CLI commands.
+
 ## Configuration
 
 ### Environment Variables

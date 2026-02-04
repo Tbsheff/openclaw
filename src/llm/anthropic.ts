@@ -25,11 +25,6 @@ export interface LLMMessage {
   content: string;
 }
 
-interface AnthropicMessage {
-  role: "user" | "assistant";
-  content: string | Array<{ type: string; text?: string; [key: string]: unknown }>;
-}
-
 interface AnthropicResponse {
   id: string;
   type: string;
@@ -81,7 +76,9 @@ export class AnthropicClient {
    */
   async loadSystemPrompt(promptName: string): Promise<string> {
     const cached = this.systemPromptCache.get(promptName);
-    if (cached) return cached;
+    if (cached) {
+      return cached;
+    }
 
     const promptPath = join(process.cwd(), "prompts", `${promptName}.md`);
     try {

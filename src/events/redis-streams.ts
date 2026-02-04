@@ -12,7 +12,6 @@ import { Redis } from "ioredis";
 import { ulid } from "ulid";
 import {
   type AgentRole,
-  type EventType,
   type PublishEventInput,
   type StreamMessage,
   BLOCK_TIMEOUT_MS,
@@ -97,7 +96,9 @@ export class RedisStreams {
    * Close all connections.
    */
   async close(): Promise<void> {
-    if (this.closed) return;
+    if (this.closed) {
+      return;
+    }
     this.closed = true;
 
     if (this.subscriber) {
@@ -243,11 +244,13 @@ export class RedisStreams {
           ">",
         )) as Array<[string, Array<[string, string[]]>]> | null;
 
-        if (!result) continue; // Timeout, no new messages
+        if (!result) {
+          continue; // Timeout, no new messages
+        }
 
-        for (const [, messages] of result as Array<[string, Array<[string, string[]]>]>) {
+        for (const [, messages] of result) {
           for (const [streamId, fields] of messages) {
-            const message = this.parseMessage(fields as string[]);
+            const message = this.parseMessage(fields);
             if (!message) {
               // Invalid message, ack and skip
               await this.ack(role, streamId);
@@ -270,7 +273,9 @@ export class RedisStreams {
           }
         }
       } catch (err) {
-        if (this.closed) break;
+        if (this.closed) {
+          break;
+        }
         console.error("[RedisStreams] Subscribe error:", (err as Error).message);
         // Brief pause before retry
         await this.sleep(1000);
@@ -283,7 +288,9 @@ export class RedisStreams {
    */
   private async processPendingMessages(role: AgentRole, handler: MessageHandler): Promise<void> {
     const pending = await this.readPendingWithIds(role, 50);
-    if (pending.length === 0) return;
+    if (pending.length === 0) {
+      return;
+    }
 
     console.log(`[RedisStreams] Processing ${pending.length} pending messages for ${role}`);
 
@@ -321,12 +328,14 @@ export class RedisStreams {
       "0",
     )) as Array<[string, Array<[string, string[]]>]> | null;
 
-    if (!result) return [];
+    if (!result) {
+      return [];
+    }
 
     const messages: StreamMessage[] = [];
-    for (const [, entries] of result as Array<[string, Array<[string, string[]]>]>) {
+    for (const [, entries] of result) {
       for (const [, fields] of entries) {
-        const message = this.parseMessage(fields as string[]);
+        const message = this.parseMessage(fields);
         if (message) {
           messages.push(message);
         }
@@ -655,11 +664,13 @@ export class RedisStreams {
       "0",
     )) as Array<[string, Array<[string, string[]]>]> | null;
 
-    if (!result) return results;
+    if (!result) {
+      return results;
+    }
 
-    for (const [, entries] of result as Array<[string, Array<[string, string[]]>]>) {
+    for (const [, entries] of result) {
       for (const [streamId, fields] of entries) {
-        const message = this.parseMessage(fields as string[]);
+        const message = this.parseMessage(fields);
         if (message) {
           results.push({ streamId, message });
         }

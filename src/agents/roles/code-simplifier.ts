@@ -390,15 +390,21 @@ Applied by code-simplifier agent.`;
     }
 
     const summaries: string[] = [];
-    if (counts["dead-code"])
+    if (counts["dead-code"]) {
       summaries.push(`- Removed ${counts["dead-code"]} dead code instance(s)`);
-    if (counts["over-engineering"])
+    }
+    if (counts["over-engineering"]) {
       summaries.push(`- Simplified ${counts["over-engineering"]} over-engineered abstraction(s)`);
-    if (counts["unnecessary-comment"])
+    }
+    if (counts["unnecessary-comment"]) {
       summaries.push(`- Removed ${counts["unnecessary-comment"]} unnecessary comment(s)`);
-    if (counts["duplicate"]) summaries.push(`- Consolidated ${counts["duplicate"]} duplicate(s)`);
-    if (counts["complexity"])
+    }
+    if (counts["duplicate"]) {
+      summaries.push(`- Consolidated ${counts["duplicate"]} duplicate(s)`);
+    }
+    if (counts["complexity"]) {
       summaries.push(`- Reduced complexity in ${counts["complexity"]} place(s)`);
+    }
 
     return summaries.join("\n") || "- Minor code cleanup";
   }

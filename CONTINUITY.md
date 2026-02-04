@@ -14,21 +14,21 @@ Key decisions:
 
 State:
 
-- Re-review complete; issues found; verdict pending.
+- Re-review complete; verdict ready.
 
 Done:
 
 - Read continuity ledger at start of turn.
 - Re-read updated pipeline code, CLI, and docs after fixes.
-- Identified remaining issues (scaler variable bug, orchestrator log dir).
+- Verified previously reported issues are addressed.
 
 Now:
 
-- Compile review findings and verdict.
+- Deliver review findings and verdict.
 
 Next:
 
-- Deliver review findings and verdict.
+- None.
 
 Open questions (UNCONFIRMED if needed):
 

@@ -112,7 +112,9 @@ export abstract class BaseAgent {
    * Graceful shutdown.
    */
   async shutdown(): Promise<void> {
-    if (this.shutdownRequested) return;
+    if (this.shutdownRequested) {
+      return;
+    }
     this.shutdownRequested = true;
 
     console.log(`[${this.role}] Shutting down agent ${this.instanceId}`);
@@ -141,7 +143,7 @@ export abstract class BaseAgent {
    * Handle incoming message - fetch work item and delegate to subclass.
    * @param streamId - optional stream ID for acking on success
    */
-  private async handleMessage(message: StreamMessage, streamId?: string): Promise<void> {
+  private async handleMessage(message: StreamMessage, _streamId?: string): Promise<void> {
     // Verify message is for this agent
     if (message.target_role !== this.role) {
       return;
@@ -199,7 +201,9 @@ export abstract class BaseAgent {
    */
   private async processPendingMessages(): Promise<void> {
     const pending = await this.redis.readPendingWithIds(this.role);
-    if (pending.length === 0) return;
+    if (pending.length === 0) {
+      return;
+    }
 
     console.log(`[${this.role}] Processing ${pending.length} pending messages from previous run`);
 

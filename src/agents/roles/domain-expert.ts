@@ -93,7 +93,9 @@ export class DomainExpertAgent extends BaseAgent {
    * Load the domain expert system prompt.
    */
   private async getSystemPrompt(): Promise<string> {
-    if (this.systemPrompt) return this.systemPrompt;
+    if (this.systemPrompt) {
+      return this.systemPrompt;
+    }
     this.systemPrompt = await this.llm.loadSystemPrompt("domain-expert");
     return this.systemPrompt;
   }
@@ -101,7 +103,7 @@ export class DomainExpertAgent extends BaseAgent {
   /**
    * Handle review_requested events from PM.
    */
-  protected async onWorkAssigned(message: StreamMessage, workItem: WorkItem): Promise<void> {
+  protected async onWorkAssigned(_message: StreamMessage, workItem: WorkItem): Promise<void> {
     console.log(`[domain-expert] Reviewing: ${workItem.title}`);
 
     const claimed = await this.claimWork(workItem.id);
@@ -305,8 +307,7 @@ Provide your assessment using the domain_review tool.`;
     // Extract most relevant sections
     const relevantSections = relevantDocs
       .slice(0, 3)
-      .map((doc) => this.extractRelevantSections(doc, keywords))
-      .flat();
+      .flatMap((doc) => this.extractRelevantSections(doc, keywords));
 
     return {
       documents: relevantDocs.slice(0, 5),
@@ -318,7 +319,9 @@ Provide your assessment using the domain_review tool.`;
    * Load domain documents from .flow/domain-docs/ directory.
    */
   private async loadDomainDocuments(): Promise<DomainDocument[]> {
-    if (this.domainDocsCache) return this.domainDocsCache;
+    if (this.domainDocsCache) {
+      return this.domainDocsCache;
+    }
 
     const repoRoot = process.cwd();
     const domainDocsDir = join(repoRoot, ".flow", "domain-docs");
@@ -329,7 +332,9 @@ Provide your assessment using the domain_review tool.`;
 
       for (const file of files) {
         const ext = extname(String(file));
-        if (ext !== ".md" && ext !== ".txt") continue;
+        if (ext !== ".md" && ext !== ".txt") {
+          continue;
+        }
 
         const filePath = join(domainDocsDir, String(file));
         try {
@@ -362,11 +367,21 @@ Provide your assessment using the domain_review tool.`;
   private inferCategory(filename: string, content: string): string {
     const lower = (filename + content).toLowerCase();
 
-    if (lower.includes("hipaa") || lower.includes("privacy")) return "hipaa";
-    if (lower.includes("medicare") || lower.includes("medicaid")) return "medicare";
-    if (lower.includes("workflow") || lower.includes("process")) return "workflow";
-    if (lower.includes("glossary") || lower.includes("terminology")) return "terminology";
-    if (lower.includes("safety")) return "safety";
+    if (lower.includes("hipaa") || lower.includes("privacy")) {
+      return "hipaa";
+    }
+    if (lower.includes("medicare") || lower.includes("medicaid")) {
+      return "medicare";
+    }
+    if (lower.includes("workflow") || lower.includes("process")) {
+      return "workflow";
+    }
+    if (lower.includes("glossary") || lower.includes("terminology")) {
+      return "terminology";
+    }
+    if (lower.includes("safety")) {
+      return "safety";
+    }
     return "general";
   }
 
@@ -376,7 +391,9 @@ Provide your assessment using the domain_review tool.`;
   private extractTitle(filename: string, content: string): string {
     // Try to find markdown title
     const titleMatch = content.match(/^#\s+(.+)$/m);
-    if (titleMatch) return titleMatch[1];
+    if (titleMatch) {
+      return titleMatch[1];
+    }
 
     // Use filename without extension
     return filename.replace(/\.(md|txt)$/, "").replace(/[-_]/g, " ");
@@ -484,18 +501,22 @@ Provide your assessment using the domain_review tool.`;
       let score = 0;
 
       for (const keyword of keywords) {
-        if (contentLower.includes(keyword)) score += 1;
+        if (contentLower.includes(keyword)) {
+          score += 1;
+        }
       }
 
       // Boost category matches
-      if (keywords.some((k) => doc.category.includes(k))) score += 5;
+      if (keywords.some((k) => doc.category.includes(k))) {
+        score += 5;
+      }
 
       return { doc, score };
     });
 
     return scored
       .filter((s) => s.score > 0)
-      .sort((a, b) => b.score - a.score)
+      .toSorted((a, b) => b.score - a.score)
       .map((s) => s.doc);
   }
 

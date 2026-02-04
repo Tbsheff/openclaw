@@ -18,6 +18,7 @@ import { loadInternalHooks } from "../hooks/loader.js";
 import { isTruthyEnvValue } from "../infra/env.js";
 import { type PluginServicesHandle, startPluginServices } from "../plugins/services.js";
 import { startBrowserControlServerIfEnabled } from "./server-browser.js";
+import { startPipelineIfEnabled } from "./server-pipeline.js";
 import {
   scheduleRestartSentinelWake,
   shouldWakeFromRestartSentinel,
@@ -37,7 +38,33 @@ export async function startGatewaySidecars(params: {
   };
   logChannels: { info: (msg: string) => void; error: (msg: string) => void };
   logBrowser: { error: (msg: string) => void };
+  logPipeline?: {
+    info: (msg: string) => void;
+    warn: (msg: string) => void;
+    error: (msg: string) => void;
+  };
 }) {
+  // Start pipeline (Docker containers + orchestrator) if configured.
+  if (params.logPipeline && !isTruthyEnvValue(process.env.OPENCLAW_SKIP_PIPELINE)) {
+    try {
+      const pipelineResult = await startPipelineIfEnabled({
+        cfg: params.cfg,
+        log: params.logPipeline,
+      });
+      if (pipelineResult.started) {
+        params.logPipeline.info(
+          `pipeline started (orchestrator PID: ${pipelineResult.orchestratorPid})`,
+        );
+      } else if (
+        pipelineResult.reason &&
+        pipelineResult.reason !== "pipeline.autoStart not enabled"
+      ) {
+        params.logPipeline.warn(`pipeline not started: ${pipelineResult.reason}`);
+      }
+    } catch (err) {
+      params.logPipeline.error(`pipeline failed to start: ${String(err)}`);
+    }
+  }
   // Start OpenClaw browser control server (unless disabled via config).
   let browserControl: Awaited<ReturnType<typeof startBrowserControlServerIfEnabled>> = null;
   try {

@@ -52,7 +52,8 @@ const ALLOWED_DEV_COMMANDS = new Set([
 // Sanitize filename to prevent path traversal
 function sanitizeFilename(name: string): string {
   // Remove path separators, parent refs, control chars; keep alphanumeric, dash, underscore
-  return name.replace(/[\/\\]|\.\.|[\x00-\x1f]/g, "").replace(/[^a-zA-Z0-9_-]/g, "_") || "unnamed";
+  // eslint-disable-next-line no-control-regex -- intentional: strip control chars for security
+  return name.replace(/[/\\]|\.\.|[\x00-\x1f]/g, "").replace(/[^a-zA-Z0-9_-]/g, "_") || "unnamed";
 }
 
 interface UIReviewResult {
@@ -332,7 +333,7 @@ export class UIReviewAgent extends BaseAgent {
   /**
    * Get baseline screenshot path.
    */
-  private getBaselinePath(workItem: WorkItem, pageName: string, viewport: string): string {
+  private getBaselinePath(_workItem: WorkItem, pageName: string, viewport: string): string {
     return join(process.cwd(), ".flow", "baselines", `${pageName}-${viewport}.png`);
   }
 
@@ -394,7 +395,9 @@ export class UIReviewAgent extends BaseAgent {
    * Launch browser using playwright-core.
    */
   private async launchBrowser(): Promise<void> {
-    if (this.browser) return;
+    if (this.browser) {
+      return;
+    }
 
     const { chromium } = await import("playwright-core");
 

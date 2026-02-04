@@ -71,7 +71,7 @@ async function runMigrations(config: Config): Promise<void> {
 
     // Get migration files
     const files = await readdir(MIGRATIONS_DIR);
-    const sqlFiles = files.filter((f) => f.endsWith(".sql")).sort();
+    const sqlFiles = files.filter((f) => f.endsWith(".sql")).toSorted((a, b) => a.localeCompare(b));
 
     // Run pending migrations
     for (const file of sqlFiles) {
@@ -149,15 +149,15 @@ async function resetDatabase(config: Config): Promise<void> {
 }
 
 async function main() {
-  const args = process.argv.slice(2);
+  const argsSet = new Set(process.argv.slice(2));
   const config = getConfig();
 
-  if (args.includes("--status") || args.includes("status")) {
+  if (argsSet.has("--status") || argsSet.has("status")) {
     const connected = await checkConnection(config);
     process.exit(connected ? 0 : 1);
   }
 
-  if (args.includes("--reset") || args.includes("reset")) {
+  if (argsSet.has("--reset") || argsSet.has("reset")) {
     console.log("Resetting database...");
     await resetDatabase(config);
     return;

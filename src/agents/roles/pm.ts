@@ -60,7 +60,9 @@ export class PMAgent extends BaseAgent {
    * Load the PM system prompt on first use.
    */
   private async getSystemPrompt(): Promise<string> {
-    if (this.systemPrompt) return this.systemPrompt;
+    if (this.systemPrompt) {
+      return this.systemPrompt;
+    }
     this.systemPrompt = await this.llm.loadSystemPrompt("pm");
     return this.systemPrompt;
   }
@@ -68,7 +70,7 @@ export class PMAgent extends BaseAgent {
   /**
    * Handle incoming work - break down goals into epics.
    */
-  protected async onWorkAssigned(message: StreamMessage, workItem: WorkItem): Promise<void> {
+  protected async onWorkAssigned(_message: StreamMessage, workItem: WorkItem): Promise<void> {
     console.log(`[pm] Processing goal: ${workItem.title}`);
 
     // Claim the work atomically

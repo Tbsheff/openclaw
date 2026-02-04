@@ -128,7 +128,7 @@ export class Scaler extends EventEmitter {
     console.log("[scaler] Starting scaler");
     this.checkInterval = setInterval(() => this.checkScaling(), this.checkIntervalMs);
     // Initial check
-    this.checkScaling();
+    void this.checkScaling();
   }
 
   /**
@@ -196,7 +196,9 @@ export class Scaler extends EventEmitter {
       const agents = this.spawner.getByRole(role);
 
       for (const agent of agents) {
-        if (currentCount <= config.minInstances) break;
+        if (currentCount <= config.minInstances) {
+          break;
+        }
 
         // Track idle time
         if (!this.idleTimers.has(agent.instanceId)) {

@@ -50,7 +50,7 @@ export class OrphanDetector extends EventEmitter {
     console.log("[orphan] Starting orphan detector");
     this.checkInterval = setInterval(() => this.checkOrphans(), this.checkIntervalMs);
     // Initial check
-    this.checkOrphans();
+    void this.checkOrphans();
   }
 
   /**
