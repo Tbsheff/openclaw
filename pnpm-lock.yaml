@@ -144,6 +144,9 @@ importers:
       pdfjs-dist:
         specifier: ^5.4.624
         version: 5.4.624
+      picomatch:
+        specifier: ^4.0.3
+        version: 4.0.3
       playwright-core:
         specifier: 1.58.1
         version: 1.58.1
@@ -156,6 +159,9 @@ importers:
       sharp:
         specifier: ^0.34.5
         version: 0.34.5
+      shell-quote:
+        specifier: ^1.8.3
+        version: 1.8.3
       signal-utils:
         specifier: ^0.21.1
         version: 0.21.1(signal-polyfill@0.2.2)
@@ -199,12 +205,18 @@ importers:
       '@types/node':
         specifier: ^25.2.0
         version: 25.2.0
+      '@types/picomatch':
+        specifier: ^4.0.2
+        version: 4.0.2
       '@types/proper-lockfile':
         specifier: ^4.1.4
         version: 4.1.4
       '@types/qrcode-terminal':
         specifier: ^0.12.2
         version: 0.12.2
+      '@types/shell-quote':
+        specifier: ^1.7.5
+        version: 1.7.5
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.1
@@ -2809,6 +2821,9 @@ packages:
   '@types/node@25.2.0':
     resolution: {integrity: sha512-DZ8VwRFUNzuqJ5khrvwMXHmvPe+zGayJhr2CDNiKB1WBE1ST8Djl00D0IC4vvNmHMdj6DlbYRIaFE7WHjlDl5w==}
 
+  '@types/picomatch@4.0.2':
+    resolution: {integrity: sha512-qHHxQ+P9PysNEGbALT8f8YOSHW0KJu6l2xU8DYY0fu/EmGxXdVnuTLvFUvBgPJMSqXq29SYHveejeAha+4AYgA==}
+
   '@types/proper-lockfile@4.1.4':
     resolution: {integrity: sha512-uo2ABllncSqg9F1D4nugVl9v93RmjxF6LJzQLMLDdPaXCUIDPeOJ21Gbqi43xNKzBi/WQ0Q0dICqufzQbMjipQ==}
 
@@ -2841,6 +2856,9 @@ packages:
 
   '@types/serve-static@2.2.0':
     resolution: {integrity: sha512-8mam4H1NHLtu7nmtalF7eyBH14QyOASmcxHhSfEoRyr0nP/YdoesEtU+uSRvMe96TW/HPTtkoKqQLl53N7UXMQ==}
+
+  '@types/shell-quote@1.7.5':
+    resolution: {integrity: sha512-+UE8GAGRPbJVQDdxi16dgadcBfQ+KG2vgZhV1+3A1XmHbmwcdwhCUwIdy+d3pAGrbvgRoVSjeI9vOWyq376Yzw==}
 
   '@types/tough-cookie@4.0.5':
     resolution: {integrity: sha512-/Ad8+nIOV7Rl++6f1BdKxFSMgmoqEoYbHRpPcx3JEfv8VRsQe9Z4mCXeJBzxs7mbHY/XOZZuXlRNfhpVPbs6ZA==}
@@ -5017,6 +5035,10 @@ packages:
   shebang-regex@3.0.0:
     resolution: {integrity: sha512-7++dFhtcx3353uBaq8DDR4NuxBetBzC7ZQOhmTQInHEd6bSrXdiEyzCvG07Z44UYdLShWUyXt5M/yhz8ekcb1A==}
     engines: {node: '>=8'}
+
+  shell-quote@1.8.3:
+    resolution: {integrity: sha512-ObmnIF4hXNg1BqhnHmgbDETF8dLPCggZWBjkQfhZpbszZnYur5DUljTcCHii5LC3J5E0yeO/1LIMyH+UvHQgyw==}
+    engines: {node: '>= 0.4'}
 
   side-channel-list@1.0.0:
     resolution: {integrity: sha512-FCLHtRD/gnpCiCHEiJLOwdmFP+wzCmDEkc9y7NsYxeF4u7Btsn1ZuwgwJGxImImHicJArLP4R0yX4c2KCrMrTA==}
@@ -8265,6 +8287,8 @@ snapshots:
     dependencies:
       undici-types: 7.16.0
 
+  '@types/picomatch@4.0.2': {}
+
   '@types/proper-lockfile@4.1.4':
     dependencies:
       '@types/retry': 0.12.5
@@ -8305,6 +8329,8 @@ snapshots:
     dependencies:
       '@types/http-errors': 2.0.5
       '@types/node': 25.2.0
+
+  '@types/shell-quote@1.7.5': {}
 
   '@types/tough-cookie@4.0.5': {}
 
@@ -10817,6 +10843,8 @@ snapshots:
       shebang-regex: 3.0.0
 
   shebang-regex@3.0.0: {}
+
+  shell-quote@1.8.3: {}
 
   side-channel-list@1.0.0:
     dependencies:
