@@ -219,12 +219,17 @@ export async function runCommandHook(
 
         if (exitCode === 0) {
           // Success - parse stdout as JSON
-          recordSuccess(handlerId);
           try {
             const output = stdout.trim() ? (JSON.parse(stdout) as ClaudeHookOutput) : {};
+            recordSuccess(handlerId);
             resolve({ success: true, output });
           } catch {
-            resolve({ error: true, message: `Invalid JSON output: ${stdout}` });
+            // Invalid JSON counts as failure for circuit breaker
+            const wasDisabled = recordFailure(handlerId);
+            const message = wasDisabled
+              ? `Invalid JSON output (disabled after ${MAX_CONSECUTIVE_FAILURES} failures): ${stdout}`
+              : `Invalid JSON output: ${stdout}`;
+            resolve({ error: true, message });
           }
           return;
         }
