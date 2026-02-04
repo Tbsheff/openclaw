@@ -250,8 +250,11 @@ export async function runCommandHook(
       },
     );
 
-    // Write input to stdin
+    // Write input to stdin (ignore EPIPE if process exits quickly)
     if (child.stdin) {
+      child.stdin.on("error", () => {
+        // Ignore EPIPE errors - process may exit before reading all input
+      });
       child.stdin.write(inputJson);
       child.stdin.end();
     }

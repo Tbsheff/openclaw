@@ -48,3 +48,13 @@ if (argv.length !== tokens.length) {
 - [ ] `matchHooks()` uses picomatch, reads from `hooks.claude[event]`
 - [ ] picomatch and shell-quote added to package.json
 - [ ] Unit tests for executor and registry
+
+## Done summary
+
+- Task completed
+
+## Evidence
+
+- Commits:
+- Tests:
+- PRs:
