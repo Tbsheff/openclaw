@@ -102,7 +102,20 @@ async function runMigrations(config: Config): Promise<void> {
   }
 }
 
+// Strict identifier pattern: alphanumeric + underscore only (prevents SQL injection)
+const IDENTIFIER_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
+function validateIdentifier(name: string, label: string): void {
+  if (!IDENTIFIER_PATTERN.test(name)) {
+    throw new Error(`Invalid ${label}: must match ${IDENTIFIER_PATTERN} (got "${name}")`);
+  }
+}
+
 async function resetDatabase(config: Config): Promise<void> {
+  // Validate identifiers before using in SQL
+  validateIdentifier(config.database, "database name");
+  validateIdentifier(config.user, "user name");
+
   // Connect to postgres database to drop/create the target
   const adminConfig = { ...config, database: "postgres" };
   const adminClient = new pg.Client(adminConfig);
@@ -121,7 +134,7 @@ async function resetDatabase(config: Config): Promise<void> {
       [config.database],
     );
 
-    // Drop and recreate
+    // Drop and recreate (identifiers validated above)
     await adminClient.query(`DROP DATABASE IF EXISTS ${config.database}`);
     console.log(`Dropped database: ${config.database}`);
 

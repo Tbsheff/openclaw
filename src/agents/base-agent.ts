@@ -276,6 +276,14 @@ export abstract class BaseAgent {
   }
 
   /**
+   * Assign work item to a target role for handoff.
+   * Must be called before publish() so the target agent can claim the work.
+   */
+  protected async assignToRole(itemId: string, targetRole: AgentRole): Promise<WorkItem | null> {
+    return this.db.assignToRole(itemId, targetRole);
+  }
+
+  /**
    * Get pending work for this agent role.
    */
   protected async getPendingWork(limit = 10): Promise<WorkItem[]> {

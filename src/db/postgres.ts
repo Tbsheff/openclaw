@@ -258,6 +258,23 @@ export class PipelineDB {
     return result.rows;
   }
 
+  /**
+   * Assign work item to a role for handoff.
+   * Updates assigned_agent and resets status to pending so the target role can claim it.
+   */
+  async assignToRole(itemId: string, targetRole: AgentRole): Promise<WorkItem | null> {
+    const result = await this.pool.query<WorkItem>(
+      `UPDATE work_items
+       SET assigned_agent = $2,
+           assigned_instance = NULL,
+           status = 'pending'
+       WHERE id = $1
+       RETURNING *`,
+      [itemId, targetRole],
+    );
+    return result.rows[0] ?? null;
+  }
+
   // ===========================================================================
   // AGENT RUNS
   // ===========================================================================
@@ -366,6 +383,41 @@ export class PipelineDB {
     const result = await this.pool.query<PipelineEvent>(
       "SELECT * FROM pipeline_events ORDER BY created_at DESC LIMIT $1",
       [limit],
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get agent runs for a work item.
+   */
+  async getAgentRuns(workItemId: string): Promise<AgentRun[]> {
+    const result = await this.pool.query<AgentRun>(
+      "SELECT * FROM agent_runs WHERE work_item_id = $1 ORDER BY queued_at DESC",
+      [workItemId],
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get recent top-level work items.
+   */
+  async getRecentWorkItems(limit = 20): Promise<WorkItem[]> {
+    const result = await this.pool.query<WorkItem>(
+      `SELECT * FROM work_items
+       WHERE parent_id IS NULL
+       ORDER BY created_at DESC
+       LIMIT $1`,
+      [limit],
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get all heartbeats (for status display).
+   */
+  async getAllHeartbeats(): Promise<AgentHeartbeat[]> {
+    const result = await this.pool.query<AgentHeartbeat>(
+      "SELECT * FROM agent_heartbeats ORDER BY agent_role, instance_id",
     );
     return result.rows;
   }

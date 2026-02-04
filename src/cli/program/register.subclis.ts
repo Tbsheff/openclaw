@@ -239,6 +239,22 @@ const entries: SubCliEntry[] = [
       mod.registerCompletionCli(program);
     },
   },
+  {
+    name: "orchestrator",
+    description: "Multi-agent pipeline orchestrator",
+    register: async (program) => {
+      const mod = await import("../orchestrator-cli.js");
+      mod.registerOrchestratorCli(program);
+    },
+  },
+  {
+    name: "pipeline",
+    description: "Multi-agent pipeline commands",
+    register: async (program) => {
+      const mod = await import("../pipeline-cli.js");
+      mod.registerPipelineCli(program);
+    },
+  },
 ];
 
 export function getSubCliEntries(): SubCliEntry[] {

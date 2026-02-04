@@ -1,22 +1,91 @@
 /**
  * Architect Agent
  *
- * Receives epics and adds technical specifications with task breakdown.
+ * Receives epics from PM and adds technical specifications with task breakdown.
+ * Uses LLM to analyze requirements and generate implementation plans.
  */
 
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
+import { z } from "zod";
 import type { WorkItem } from "../../db/postgres.js";
 import type { StreamMessage } from "../../events/types.js";
+import { getLLM } from "../../llm/anthropic.js";
 import { BaseAgent, type AgentConfig } from "../base-agent.js";
 
+// =============================================================================
+// SCHEMAS
+// =============================================================================
+
+const TechSpecComponentSchema = z.object({
+  name: z.string(),
+  purpose: z.string(),
+  dependencies: z.array(z.string()),
+});
+
+const TechSpecInterfaceSchema = z.object({
+  name: z.string(),
+  definition: z.string(),
+});
+
+const TechSpecDecisionSchema = z.object({
+  decision: z.string(),
+  rationale: z.string(),
+});
+
+const TechnicalSpecSchema = z.object({
+  architecture: z.string(),
+  components: z.array(TechSpecComponentSchema),
+  file_structure: z.array(z.string()),
+  interfaces: z.array(TechSpecInterfaceSchema),
+  decisions: z.array(TechSpecDecisionSchema),
+});
+
+const TaskSpecSchema = z.object({
+  title: z.string(),
+  description: z.string(),
+  files_to_modify: z.array(z.string()),
+  implementation_approach: z.string(),
+  test_requirements: z.array(z.string()),
+  acceptance_criteria: z.array(z.string()),
+  estimated_complexity: z.enum(["low", "medium", "high"]),
+});
+
+const ArchitectResponseSchema = z.object({
+  technical_spec: TechnicalSpecSchema,
+  tasks: z.array(TaskSpecSchema),
+});
+
+type TechnicalSpec = z.infer<typeof TechnicalSpecSchema>;
+type TaskSpec = z.infer<typeof TaskSpecSchema>;
+
+// =============================================================================
+// ARCHITECT AGENT
+// =============================================================================
+
 export class ArchitectAgent extends BaseAgent {
+  private systemPrompt: string | null = null;
+
   constructor(instanceId?: string) {
     const config: AgentConfig = {
       role: "architect",
       instanceId,
     };
     super(config);
+  }
+
+  /**
+   * Load the architect system prompt.
+   */
+  private async getSystemPrompt(): Promise<string> {
+    if (!this.systemPrompt) {
+      const llm = getLLM();
+      this.systemPrompt = await llm.loadSystemPrompt("architect");
+      if (!this.systemPrompt) {
+        throw new Error("Failed to load architect system prompt");
+      }
+    }
+    return this.systemPrompt;
   }
 
   protected async onWorkAssigned(message: StreamMessage, workItem: WorkItem): Promise<void> {
@@ -34,7 +103,7 @@ export class ArchitectAgent extends BaseAgent {
         ? await this.readSpecFile(workItem.spec_path)
         : (workItem.description ?? workItem.title);
 
-      // Generate technical spec and tasks
+      // Generate technical spec and tasks using LLM
       const { techSpec, tasks } = await this.generateTechSpec(workItem, specContent);
 
       // Update epic spec with technical details
@@ -62,6 +131,8 @@ export class ArchitectAgent extends BaseAgent {
 
       // Mark epic as complete, notify CTO review
       await this.updateWorkStatus(workItem.id, "done");
+      // Assign to target role before publishing so they can claim the work
+      await this.assignToRole(workItem.id, "cto-review");
       await this.publish({
         workItemId: workItem.id,
         eventType: "work_completed",
@@ -89,92 +160,152 @@ export class ArchitectAgent extends BaseAgent {
     await writeFile(fullPath, existing + "\n\n" + techSpec, "utf-8");
   }
 
-  private async writeTaskSpec(
-    epicId: string,
-    taskNum: number,
-    task: { title: string; description: string; spec: string },
-  ): Promise<string> {
+  private async writeTaskSpec(epicId: string, taskNum: number, task: TaskSpec): Promise<string> {
     const repoRoot = process.cwd();
     const taskDir = join(repoRoot, ".flow", "tasks");
     const taskPath = join(taskDir, `${epicId}.${taskNum}.md`);
 
     await mkdir(dirname(taskPath), { recursive: true });
-    await writeFile(taskPath, task.spec, "utf-8");
+
+    const taskSpecContent = this.formatTaskSpec(task, taskNum);
+    await writeFile(taskPath, taskSpecContent, "utf-8");
 
     return `.flow/tasks/${epicId}.${taskNum}.md`;
   }
 
+  /**
+   * Format a task spec as markdown.
+   */
+  private formatTaskSpec(task: TaskSpec, taskNum: number): string {
+    return `# Task ${taskNum}: ${task.title}
+
+## Description
+${task.description}
+
+## Files to Modify
+${task.files_to_modify.map((f) => `- \`${f}\``).join("\n")}
+
+## Implementation Approach
+${task.implementation_approach}
+
+## Test Requirements
+${task.test_requirements.map((t) => `- [ ] ${t}`).join("\n")}
+
+## Acceptance Criteria
+${task.acceptance_criteria.map((c) => `- [ ] ${c}`).join("\n")}
+
+## Estimated Complexity
+${task.estimated_complexity}
+`;
+  }
+
+  /**
+   * Format technical spec as markdown for appending to epic.
+   */
+  private formatTechSpec(spec: TechnicalSpec): string {
+    const sections: string[] = [];
+
+    sections.push("## Technical Specification");
+    sections.push("");
+    sections.push("### Architecture");
+    sections.push(spec.architecture);
+    sections.push("");
+
+    if (spec.components.length > 0) {
+      sections.push("### Components");
+      for (const comp of spec.components) {
+        sections.push(`#### ${comp.name}`);
+        sections.push(`- **Purpose:** ${comp.purpose}`);
+        if (comp.dependencies.length > 0) {
+          sections.push(`- **Dependencies:** ${comp.dependencies.join(", ")}`);
+        }
+        sections.push("");
+      }
+    }
+
+    if (spec.file_structure.length > 0) {
+      sections.push("### File Structure");
+      for (const file of spec.file_structure) {
+        sections.push(`- ${file}`);
+      }
+      sections.push("");
+    }
+
+    if (spec.interfaces.length > 0) {
+      sections.push("### Interfaces");
+      for (const iface of spec.interfaces) {
+        sections.push(`#### ${iface.name}`);
+        sections.push("```typescript");
+        sections.push(iface.definition);
+        sections.push("```");
+        sections.push("");
+      }
+    }
+
+    if (spec.decisions.length > 0) {
+      sections.push("### Architecture Decisions");
+      for (const dec of spec.decisions) {
+        sections.push(`- **${dec.decision}:** ${dec.rationale}`);
+      }
+      sections.push("");
+    }
+
+    return sections.join("\n");
+  }
+
+  /**
+   * Generate technical specification and tasks using LLM.
+   */
   private async generateTechSpec(
     workItem: WorkItem,
     specContent: string,
   ): Promise<{
     techSpec: string;
-    tasks: Array<{ title: string; description: string; spec: string }>;
+    tasks: TaskSpec[];
   }> {
-    // TODO: Use LLM to generate technical spec
-    // For now, generate structured placeholders
+    const systemPrompt = await this.getSystemPrompt();
+    const llm = getLLM();
 
-    const techSpec = `
-## Technical Specification
+    // Build the user prompt
+    const userPrompt = `Analyze the following epic specification and generate a technical specification with task breakdown.
 
-### Architecture
-- Component-based design
-- Follow existing patterns
+## Epic: ${workItem.title}
 
-### Dependencies
-- No new external dependencies required
+${specContent}
 
-### Implementation Notes
-- Use TDD approach
-- Follow coding standards
-`;
+---
 
-    const tasks = [
-      {
-        title: `Implement core logic for: ${workItem.title}`,
-        description: "Core implementation of the feature",
-        spec: `# Task: Core Implementation
+Please provide your response using the output_spec tool.`;
 
-## Parent Epic
-${workItem.title}
+    console.log(`[architect] Calling LLM for technical spec generation...`);
 
-## Objective
-Implement the core logic for this feature.
+    const response = await llm.completeWithSchema({
+      systemPrompt,
+      messages: [{ role: "user", content: userPrompt }],
+      schema: ArchitectResponseSchema,
+      schemaName: "output_spec",
+      schemaDescription: "Output the technical specification and task breakdown",
+      maxTokens: 8192,
+      temperature: 0.7,
+    });
 
-## Requirements
-- Follow TDD approach
-- Write tests first
-- Implement minimal code to pass tests
+    console.log(`[architect] LLM response received: ${response.tasks.length} tasks`);
 
-## Acceptance Criteria
-- [ ] Tests written and passing
-- [ ] Code follows existing patterns
-- [ ] No linting errors
-`,
-      },
-      {
-        title: `Add integration tests for: ${workItem.title}`,
-        description: "Integration testing for the feature",
-        spec: `# Task: Integration Tests
+    // Validate response structure
+    if (!response.technical_spec || !response.tasks) {
+      throw new Error("Invalid LLM response: missing technical_spec or tasks");
+    }
 
-## Parent Epic
-${workItem.title}
+    if (response.tasks.length === 0) {
+      throw new Error("Invalid LLM response: no tasks generated");
+    }
 
-## Objective
-Add integration tests to verify end-to-end behavior.
+    // Format technical spec as markdown
+    const techSpec = this.formatTechSpec(response.technical_spec);
 
-## Requirements
-- Test happy paths
-- Test error cases
-- Test edge cases
-
-## Acceptance Criteria
-- [ ] Integration tests cover main flows
-- [ ] All tests pass
-`,
-      },
-    ];
-
-    return { techSpec, tasks };
+    return {
+      techSpec,
+      tasks: response.tasks,
+    };
   }
 }

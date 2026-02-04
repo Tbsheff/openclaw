@@ -161,9 +161,9 @@ export class Scaler extends EventEmitter {
   private async checkRoleScaling(role: AgentRole): Promise<void> {
     const config = this.scalingConfigs[role];
     const currentCount = this.spawner.countByRole(role);
-    // Use total backlog (pending + undelivered lag) for accurate queue depth
+    // Use pending count (actual unprocessed work) - not XLEN which grows indefinitely
     const backlog = await this.redis.getQueueBacklog(role);
-    const queueDepth = backlog.total;
+    const queueDepth = backlog.pending;
 
     // Scale up if queue is deep and we're under max
     // For roles with minInstances: 0, also scale up if there's ANY work

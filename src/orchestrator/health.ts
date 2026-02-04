@@ -81,11 +81,10 @@ export class HealthMonitor extends EventEmitter {
       for (const heartbeat of staleHeartbeats) {
         const instanceId = heartbeat.instance_id;
 
-        // Check if process is actually running
-        if (!this.spawner.isRunning(instanceId)) {
-          console.log(`[health] Agent ${instanceId} is stale, attempting restart`);
-          await this.attemptRestart(heartbeat.agent_role, instanceId);
-        }
+        // Restart stale agents regardless of spawner state - hung agents report stale heartbeats
+        // but may still appear running. Kill first if running, then restart.
+        console.log(`[health] Agent ${instanceId} is stale, attempting restart`);
+        await this.attemptRestart(heartbeat.agent_role, instanceId);
       }
 
       // Also check spawner's view of running processes

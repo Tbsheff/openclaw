@@ -66,7 +66,7 @@ export class OrphanDetector extends EventEmitter {
 
   /**
    * Check for orphaned messages across all roles.
-   * Reclaimed messages are emitted so they can be re-queued for processing.
+   * Reclaimed messages are requeued to the same queue and acked.
    */
   private async checkOrphans(): Promise<void> {
     let totalReclaimed = 0;
@@ -76,9 +76,9 @@ export class OrphanDetector extends EventEmitter {
         const reclaimed = await this.redis.reclaimOrphans(role);
         if (reclaimed.length > 0) {
           totalReclaimed += reclaimed.length;
-          // Emit each reclaimed message for processing
-          // Agents listening to this event can pick them up
+          // Requeue each reclaimed message back to the same queue so workers can pick it up
           for (const { streamId, message } of reclaimed) {
+            await this.redis.requeueMessage(role, streamId, message);
             this.emit("reclaimed", { role, streamId, message });
           }
         }

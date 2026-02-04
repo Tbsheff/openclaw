@@ -30,6 +30,7 @@ export type AgentRole = z.infer<typeof AgentRoleSchema>;
 // =============================================================================
 
 export const EventTypeSchema = z.enum([
+  "goal_submitted",
   "work_created",
   "work_assigned",
   "work_completed",
@@ -66,7 +67,7 @@ export const PublishEventSchema = z.object({
   event_type: EventTypeSchema,
   source_role: AgentRoleSchema,
   target_role: AgentRoleSchema,
-  payload: z.record(z.unknown()).default({}),
+  payload: z.record(z.string(), z.unknown()).default({}),
 });
 
 export type PublishEventInput = z.infer<typeof PublishEventSchema>;
@@ -75,16 +76,29 @@ export type PublishEventInput = z.infer<typeof PublishEventSchema>;
 // CONSTANTS
 // =============================================================================
 
-export const STREAM_NAME = "openclaw:pipeline";
-export const DLQ_STREAM = "openclaw:pipeline:dlq";
+/**
+ * Get queue name for an agent role.
+ * Each role has its own dedicated stream for direct routing.
+ */
+export function getQueueName(role: AgentRole): string {
+  return `openclaw:queue:${role}`;
+}
+
+export const DLQ_STREAM = "openclaw:dlq";
 export const MAX_RETRIES = 3;
 export const RETRY_DELAYS_MS = [1000, 5000, 30000]; // 1s, 5s, 30s
 export const ORPHAN_THRESHOLD_MS = 60000; // 60s
 export const BLOCK_TIMEOUT_MS = 5000; // 5s blocking read
 
 /**
- * Get consumer group name for an agent role.
+ * Consumer group name (same for all queues - workers compete within a role).
  */
-export function getConsumerGroup(role: AgentRole): string {
-  return `group:${role}`;
+export const CONSUMER_GROUP = "group:workers";
+
+/**
+ * Get consumer group name for an agent role.
+ * @deprecated Use CONSUMER_GROUP constant instead - all queues use the same group name.
+ */
+export function getConsumerGroup(_role: AgentRole): string {
+  return CONSUMER_GROUP;
 }
