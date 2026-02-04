@@ -5,6 +5,7 @@ import {
   runPreToolUseHooks,
   hasPreToolUseHooks,
   getClaudeHooksConfig,
+  toClaudeStyleName,
   type PreToolUseHookInput,
 } from "./pre-tool-use.js";
 
@@ -64,6 +65,22 @@ describe("PreToolUse hooks", () => {
     vi.clearAllMocks();
   });
 
+  describe("toClaudeStyleName", () => {
+    it("maps canonical names to Claude-style names", () => {
+      expect(toClaudeStyleName("exec")).toBe("Bash");
+      expect(toClaudeStyleName("read")).toBe("Read");
+      expect(toClaudeStyleName("write")).toBe("Write");
+      expect(toClaudeStyleName("edit")).toBe("Edit");
+      expect(toClaudeStyleName("glob")).toBe("Glob");
+      expect(toClaudeStyleName("grep")).toBe("Grep");
+    });
+
+    it("returns original name if no mapping exists", () => {
+      expect(toClaudeStyleName("mcp__custom__tool")).toBe("mcp__custom__tool");
+      expect(toClaudeStyleName("unknown_tool")).toBe("unknown_tool");
+    });
+  });
+
   describe("getClaudeHooksConfig", () => {
     it("returns undefined when feature flag is disabled", () => {
       featureEnabled = false;
@@ -95,7 +112,7 @@ describe("PreToolUse hooks", () => {
       setupConfig({
         PreToolUse: [{ matcher: "*", hooks: [{ type: "command", command: "echo" }] }],
       });
-      expect(hasPreToolUseHooks("Bash")).toBe(false);
+      expect(hasPreToolUseHooks("exec")).toBe(false);
     });
 
     it("returns false when no matching hooks", () => {
@@ -103,15 +120,17 @@ describe("PreToolUse hooks", () => {
       setupConfig({
         PreToolUse: [{ matcher: "Write", hooks: [{ type: "command", command: "echo" }] }],
       });
-      expect(hasPreToolUseHooks("Bash")).toBe(false);
+      // "exec" maps to "Bash", which doesn't match "Write"
+      expect(hasPreToolUseHooks("exec")).toBe(false);
     });
 
-    it("returns true for exact tool match", () => {
+    it("maps canonical name to Claude-style for matching", () => {
       featureEnabled = true;
       setupConfig({
         PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "echo" }] }],
       });
-      expect(hasPreToolUseHooks("Bash")).toBe(true);
+      // "exec" maps to "Bash" which matches
+      expect(hasPreToolUseHooks("exec")).toBe(true);
     });
 
     it("returns true for glob match", () => {
@@ -119,7 +138,8 @@ describe("PreToolUse hooks", () => {
       setupConfig({
         PreToolUse: [{ matcher: "Bash*", hooks: [{ type: "command", command: "echo" }] }],
       });
-      expect(hasPreToolUseHooks("BashTool")).toBe(true);
+      // "exec" maps to "Bash" which matches "Bash*"
+      expect(hasPreToolUseHooks("exec")).toBe(true);
     });
 
     it("returns true for wildcard match", () => {
@@ -231,11 +251,11 @@ describe("PreToolUse integration", () => {
   });
 
   describe("blocking hooks", () => {
-    it("blocks tool when exit code 2", async () => {
+    it("blocks tool when exit code 2 (using canonical name)", async () => {
       setupConfig({
         PreToolUse: [
           {
-            matcher: "Bash",
+            matcher: "Bash", // Claude-style name in config
             hooks: [
               {
                 type: "command",
@@ -246,7 +266,8 @@ describe("PreToolUse integration", () => {
         ],
       });
 
-      const result = await runPreToolUseHooks(createTestInput("Bash", { command: "rm -rf /" }));
+      // Use canonical name "exec" - it maps to "Bash" for matching
+      const result = await runPreToolUseHooks(createTestInput("exec", { command: "rm -rf /" }));
       expect(result.decision).toBe("deny");
       expect(result.reason).toContain("rm -rf blocked");
     });
@@ -270,9 +291,34 @@ describe("PreToolUse integration", () => {
         ],
       });
 
-      const result = await runPreToolUseHooks(createTestInput("Write"));
+      // Use canonical name "write" - it maps to "Write"
+      const result = await runPreToolUseHooks(createTestInput("write"));
       expect(result.decision).toBe("deny");
       expect(result.reason).toBe("policy violation");
+    });
+
+    it("returns ask decision when hook outputs ask", async () => {
+      setupConfig({
+        PreToolUse: [
+          {
+            matcher: "*",
+            hooks: [
+              {
+                type: "command",
+                command: [
+                  "node",
+                  "-e",
+                  'console.log(JSON.stringify({decision:"ask",reason:"needs approval"}))',
+                ],
+              },
+            ],
+          },
+        ],
+      });
+
+      const result = await runPreToolUseHooks(createTestInput("exec"));
+      expect(result.decision).toBe("ask");
+      expect(result.reason).toBe("needs approval");
     });
   });
 
@@ -281,7 +327,7 @@ describe("PreToolUse integration", () => {
       setupConfig({
         PreToolUse: [
           {
-            matcher: "Bash",
+            matcher: "Bash", // Claude-style name in config
             hooks: [
               {
                 type: "command",
@@ -296,7 +342,8 @@ describe("PreToolUse integration", () => {
         ],
       });
 
-      const result = await runPreToolUseHooks(createTestInput("Bash", { command: "ls" }));
+      // "exec" maps to "Bash"
+      const result = await runPreToolUseHooks(createTestInput("exec", { command: "ls" }));
       expect(result.decision).toBe("allow");
       expect(result.updatedInput).toEqual({ timeout: 5000 });
     });

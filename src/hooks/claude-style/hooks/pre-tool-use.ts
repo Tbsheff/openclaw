@@ -14,6 +14,32 @@ import { matchHooks } from "../registry.js";
 const log = createSubsystemLogger("hooks/claude/pre-tool-use");
 
 // =============================================================================
+// Tool Name Mapping (canonical → Claude Code style)
+// =============================================================================
+
+/**
+ * Map canonical tool names to Claude Code-style names.
+ * This allows users to configure hooks using familiar Claude Code names (Bash, Read, etc.)
+ * while the codebase uses canonical names (exec, read, etc.).
+ */
+const CLAUDE_STYLE_NAMES: Record<string, string> = {
+  exec: "Bash",
+  read: "Read",
+  write: "Write",
+  edit: "Edit",
+  glob: "Glob",
+  grep: "Grep",
+  apply_patch: "ApplyPatch",
+};
+
+/**
+ * Get the Claude Code-style name for a tool, or return as-is if no mapping.
+ */
+export function toClaudeStyleName(canonicalName: string): string {
+  return CLAUDE_STYLE_NAMES[canonicalName] ?? canonicalName;
+}
+
+// =============================================================================
 // Types
 // =============================================================================
 
@@ -76,17 +102,20 @@ export async function runPreToolUseHooks(
     return { decision: "allow" };
   }
 
-  // Find matching handlers for this tool
-  const handlers = matchHooks(config, "PreToolUse", input.tool_name);
+  // Map to Claude-style name for matching (exec → Bash, read → Read, etc.)
+  const claudeStyleName = toClaudeStyleName(input.tool_name);
+
+  // Find matching handlers using Claude-style name
+  const handlers = matchHooks(config, "PreToolUse", claudeStyleName);
   if (handlers.length === 0) {
     return { decision: "allow" };
   }
 
-  // Build hook input
+  // Build hook input (use Claude-style name for consistency with Claude Code docs)
   const hookInput: ClaudeHookPreToolUseInput = {
     hook_event_name: "PreToolUse",
     session_id: input.session_id,
-    tool_name: input.tool_name,
+    tool_name: claudeStyleName,
     tool_input: input.tool_input,
     cwd: input.cwd,
   };
@@ -106,12 +135,12 @@ export async function runPreToolUseHooks(
 
     // Handle different result types
     if ("blocked" in result && result.blocked) {
-      log.info(`PreToolUse hook denied: tool=${input.tool_name} reason=${result.reason}`);
+      log.info(`PreToolUse hook denied: tool=${claudeStyleName} reason=${result.reason}`);
       return { decision: "deny", reason: result.reason };
     }
 
     if ("error" in result && result.error) {
-      log.warn(`PreToolUse hook error: tool=${input.tool_name} error=${result.message}`);
+      log.warn(`PreToolUse hook error: tool=${claudeStyleName} error=${result.message}`);
       // Continue on error (don't block the tool)
       continue;
     }
@@ -122,9 +151,15 @@ export async function runPreToolUseHooks(
       // Check explicit decision
       if (output.decision === "deny") {
         log.info(
-          `PreToolUse hook denied via output: tool=${input.tool_name} reason=${output.reason}`,
+          `PreToolUse hook denied via output: tool=${claudeStyleName} reason=${output.reason}`,
         );
         return { decision: "deny", reason: output.reason };
+      }
+
+      if (output.decision === "ask") {
+        // "ask" returned from hook - propagate to caller (not yet fully supported)
+        log.debug(`PreToolUse hook returned "ask" for tool=${claudeStyleName}`);
+        return { decision: "ask", reason: output.reason };
       }
 
       // Accumulate param modifications
@@ -153,6 +188,8 @@ export function hasPreToolUseHooks(toolName: string): boolean {
   if (!config) {
     return false;
   }
-  const handlers = matchHooks(config, "PreToolUse", toolName);
+  // Match using Claude-style name
+  const claudeStyleName = toClaudeStyleName(toolName);
+  const handlers = matchHooks(config, "PreToolUse", claudeStyleName);
   return handlers.length > 0;
 }
