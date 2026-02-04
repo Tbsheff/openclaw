@@ -398,7 +398,7 @@ Fires after a tool completes successfully. Observe-only (fire-and-forget).
 }
 ```
 
-Tool results are sanitized (truncated to 10KB, binary content excluded).
+Tool results are sanitized (truncated to 100KB, binary buffers replaced with `[Binary Buffer]` placeholder).
 
 **Note:** PostToolUse hooks cannot block or modify; they are fire-and-forget for logging/observability.
 
