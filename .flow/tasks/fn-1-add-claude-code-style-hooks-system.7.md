@@ -49,7 +49,7 @@ runPreCompactHooks({
 
 ## Done summary
 
-TBD
+- Task completed
 
 ## Evidence
 
