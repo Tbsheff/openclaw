@@ -11,6 +11,7 @@ import { refreshQwenPortalCredentials } from "../../providers/qwen-portal-oauth.
 import { refreshChutesTokens } from "../chutes-oauth.js";
 import { AUTH_STORE_LOCK_OPTIONS, log } from "./constants.js";
 import { formatAuthDoctorHint } from "./doctor.js";
+import { ensureClaudeKeychainToken } from "./keychain.js";
 import { ensureAuthStoreFile, resolveAuthStorePath } from "./paths.js";
 import { suggestOAuthProfileIdForLegacyDefault } from "./repair.js";
 import { ensureAuthProfileStore, saveAuthProfileStore } from "./store.js";
@@ -180,14 +181,58 @@ export async function resolveApiKeyForProfile(params: {
     if (!token) {
       return null;
     }
-    if (
-      typeof cred.expires === "number" &&
-      Number.isFinite(cred.expires) &&
-      cred.expires > 0 &&
-      Date.now() >= cred.expires
-    ) {
-      return null;
+
+    // For anthropic tokens, check if we should refresh from keychain
+    if (cred.provider === "anthropic") {
+      const tokenExpired =
+        typeof cred.expires === "number" &&
+        Number.isFinite(cred.expires) &&
+        cred.expires > 0 &&
+        Date.now() >= cred.expires;
+
+      // If token is expired or we don't have expiry info, try keychain
+      if (tokenExpired || !cred.expires) {
+        try {
+          const keychainResult = await ensureClaudeKeychainToken();
+          if (keychainResult) {
+            // Update the profile with fresh keychain token
+            store.profiles[profileId] = {
+              ...cred,
+              token: keychainResult.accessToken,
+              expires: keychainResult.expiresAt,
+            };
+            saveAuthProfileStore(store, params.agentDir);
+            log.info("Refreshed anthropic token from keychain", {
+              profileId,
+              expiresAt: new Date(keychainResult.expiresAt).toISOString(),
+            });
+            return {
+              apiKey: keychainResult.accessToken,
+              provider: cred.provider,
+              email: cred.email,
+            };
+          }
+        } catch (error) {
+          log.debug("Keychain fallback failed", { error });
+        }
+
+        // If keychain fails and token is expired, return null
+        if (tokenExpired) {
+          return null;
+        }
+      }
+    } else {
+      // Non-anthropic token expiry check
+      if (
+        typeof cred.expires === "number" &&
+        Number.isFinite(cred.expires) &&
+        cred.expires > 0 &&
+        Date.now() >= cred.expires
+      ) {
+        return null;
+      }
     }
+
     return { apiKey: token, provider: cred.provider, email: cred.email };
   }
   if (Date.now() < cred.expires) {

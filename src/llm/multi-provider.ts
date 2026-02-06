@@ -91,16 +91,46 @@ function parseModel(model: string): ProviderInfo {
 // API KEY RESOLUTION
 // =============================================================================
 
-const apiKeyCache: Map<Provider, string> = new Map();
+interface CachedApiKey {
+  apiKey: string;
+  expiresAt?: number; // Unix timestamp in ms
+  source: string;
+}
+
+const apiKeyCache: Map<Provider, CachedApiKey> = new Map();
+
+// Token refresh buffer - refresh 5 minutes before expiry
+const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
 async function getApiKey(provider: Provider): Promise<string> {
   const cached = apiKeyCache.get(provider);
-  if (cached) return cached;
+
+  // Use cache if valid and not expiring soon
+  if (cached) {
+    const now = Date.now();
+    if (!cached.expiresAt || cached.expiresAt > now + TOKEN_REFRESH_BUFFER_MS) {
+      return cached.apiKey;
+    }
+    // Token expiring soon or expired - clear cache and re-resolve
+    console.log(`[llm] Token for ${provider} expiring, refreshing...`);
+    apiKeyCache.delete(provider);
+  }
 
   try {
     const auth = await resolveApiKeyForProvider({ provider });
     if (auth.apiKey) {
-      apiKeyCache.set(provider, auth.apiKey);
+      // For OAuth/token modes, we should re-check periodically
+      // Set a reasonable TTL even if expiry is unknown
+      const ttlMs =
+        auth.mode === "oauth" || auth.mode === "token"
+          ? 30 * 60 * 1000 // 30 min for OAuth/token
+          : undefined; // No expiry for API keys
+
+      apiKeyCache.set(provider, {
+        apiKey: auth.apiKey,
+        expiresAt: ttlMs ? Date.now() + ttlMs : undefined,
+        source: auth.source,
+      });
       return auth.apiKey;
     }
   } catch {
@@ -117,7 +147,10 @@ async function getApiKey(provider: Provider): Promise<string> {
 
   const envKey = process.env[envVarMap[provider]];
   if (envKey) {
-    apiKeyCache.set(provider, envKey);
+    apiKeyCache.set(provider, {
+      apiKey: envKey,
+      source: `env:${envVarMap[provider]}`,
+    });
     return envKey;
   }
 
