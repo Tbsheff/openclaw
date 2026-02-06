@@ -13,7 +13,6 @@ import { join, dirname } from "node:path";
 import { z } from "zod";
 import type { WorkItem } from "../../db/postgres.js";
 import type { StreamMessage } from "../../events/types.js";
-import { createLLM, type AnthropicClient } from "../../llm/anthropic.js";
 import { BaseAgent, type AgentConfig } from "../base-agent.js";
 
 // =============================================================================
@@ -44,7 +43,6 @@ type EpicSpec = z.infer<typeof EpicSpecSchema>;
 // =============================================================================
 
 export class PMAgent extends BaseAgent {
-  private llm: AnthropicClient | null = null;
   private systemPrompt: string | null = null;
 
   constructor(instanceId?: string) {
@@ -56,24 +54,21 @@ export class PMAgent extends BaseAgent {
   }
 
   /**
-   * Get or create the LLM client (lazy initialization for auth-profiles support).
-   */
-  private async getLLMClient(): Promise<AnthropicClient> {
-    if (!this.llm) {
-      this.llm = await createLLM();
-    }
-    return this.llm;
-  }
-
-  /**
    * Load the PM system prompt on first use.
    */
   private async getSystemPrompt(): Promise<string> {
     if (this.systemPrompt) {
       return this.systemPrompt;
     }
-    const llm = await this.getLLMClient();
-    this.systemPrompt = await llm.loadSystemPrompt("pm");
+    // TODO: Load from prompts directory
+    this.systemPrompt = `You are a skilled Product Manager agent. Your job is to:
+1. Analyze incoming goals and requests
+2. Break them down into well-structured epics with user stories
+3. Define clear acceptance criteria
+4. Identify technical considerations
+5. Propose a testing strategy
+
+Be thorough but concise. Focus on actionable specifications.`;
     return this.systemPrompt;
   }
 
@@ -136,7 +131,7 @@ export class PMAgent extends BaseAgent {
    */
   private async generateEpicSpec(goal: string): Promise<EpicSpec> {
     const systemPrompt = await this.getSystemPrompt();
-    const llm = await this.getLLMClient();
+    const llm = this.getLLM();
 
     try {
       const epicSpec = await llm.completeWithSchema({

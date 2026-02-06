@@ -19,7 +19,6 @@ import { join, extname } from "node:path";
 import { z } from "zod";
 import type { WorkItem } from "../../db/postgres.js";
 import type { StreamMessage } from "../../events/types.js";
-import { createLLM, type AnthropicClient } from "../../llm/anthropic.js";
 import { BaseAgent, type AgentConfig } from "../base-agent.js";
 
 // =============================================================================
@@ -76,7 +75,6 @@ interface RAGContext {
 // =============================================================================
 
 export class DomainExpertAgent extends BaseAgent {
-  private llm: AnthropicClient | null = null;
   private systemPrompt: string | null = null;
   private domainDocsCache: DomainDocument[] | null = null;
 
@@ -89,24 +87,28 @@ export class DomainExpertAgent extends BaseAgent {
   }
 
   /**
-   * Get or create the LLM client (lazy initialization for auth-profiles support).
-   */
-  private async getLLMClient(): Promise<AnthropicClient> {
-    if (!this.llm) {
-      this.llm = await createLLM();
-    }
-    return this.llm;
-  }
-
-  /**
    * Load the domain expert system prompt.
    */
   private async getSystemPrompt(): Promise<string> {
     if (this.systemPrompt) {
       return this.systemPrompt;
     }
-    const llm = await this.getLLMClient();
-    this.systemPrompt = await llm.loadSystemPrompt("domain-expert");
+    // TODO: Load from prompts directory
+    this.systemPrompt = `You are a Domain Expert agent specializing in home health care.
+
+Domain areas:
+- HIPAA compliance (patient privacy, PHI handling)
+- Medicare/Medicaid regulations
+- Home health care workflows
+- Caregiver/patient/agency terminology
+
+Your job is to review specifications and ensure they:
+1. Comply with healthcare regulations
+2. Use correct domain terminology
+3. Follow established workflows
+4. Protect patient safety and privacy
+
+Flag any compliance issues with severity and recommendations.`;
     return this.systemPrompt;
   }
 
@@ -239,7 +241,7 @@ Provide your assessment using the domain_review tool.`;
     console.log(`[domain-expert] Calling LLM for domain review...`);
 
     try {
-      const llm = await this.getLLMClient();
+      const llm = this.getLLM();
       const review = await llm.completeWithSchema({
         systemPrompt,
         messages: [{ role: "user", content: userPrompt }],

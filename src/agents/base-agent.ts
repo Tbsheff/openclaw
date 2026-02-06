@@ -20,6 +20,8 @@ import {
   closeRedis,
   type RedisStreams,
 } from "../events/index.js";
+import { createMultiProviderLLM, type MultiProviderLLM } from "../llm/multi-provider.js";
+import { getWorkerModelConfig, type WorkerModelConfig } from "../orchestrator/worker-config.js";
 
 // =============================================================================
 // TYPES
@@ -45,6 +47,8 @@ export abstract class BaseAgent {
 
   protected redis: RedisStreams;
   protected db: PipelineDB;
+  protected modelConfig: WorkerModelConfig;
+  private _llm: MultiProviderLLM | null = null;
 
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   private currentWorkItemId: string | null = null;
@@ -53,6 +57,10 @@ export abstract class BaseAgent {
   constructor(config: AgentConfig) {
     this.role = config.role;
     this.instanceId = config.instanceId ?? `${config.role}-${Date.now()}`;
+
+    // Load model config for this role
+    this.modelConfig = getWorkerModelConfig(config.role);
+    console.log(`[${this.role}] Using model: ${this.modelConfig.model}`);
 
     // Initialize connections
     this.redis = getRedis({
@@ -71,6 +79,22 @@ export abstract class BaseAgent {
     // Start heartbeat
     const intervalMs = config.heartbeatIntervalMs ?? 10000;
     this.heartbeatInterval = setInterval(() => this.sendHeartbeat(), intervalMs);
+  }
+
+  /**
+   * Get the LLM client for this agent role.
+   * Lazily initialized based on worker-config.
+   */
+  protected getLLM(): MultiProviderLLM {
+    if (!this._llm) {
+      this._llm = createMultiProviderLLM({
+        model: this.modelConfig.model,
+        maxTokens: this.modelConfig.maxTokens,
+        temperature: this.modelConfig.temperature,
+        thinking: this.modelConfig.thinking,
+      });
+    }
+    return this._llm;
   }
 
   // ===========================================================================

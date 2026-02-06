@@ -10,7 +10,6 @@ import { join, dirname } from "node:path";
 import { z } from "zod";
 import type { WorkItem } from "../../db/postgres.js";
 import type { StreamMessage } from "../../events/types.js";
-import { createLLM, type AnthropicClient } from "../../llm/anthropic.js";
 import { BaseAgent, type AgentConfig } from "../base-agent.js";
 
 // =============================================================================
@@ -64,7 +63,6 @@ type TaskSpec = z.infer<typeof TaskSpecSchema>;
 // =============================================================================
 
 export class ArchitectAgent extends BaseAgent {
-  private llm: AnthropicClient | null = null;
   private systemPrompt: string | null = null;
 
   constructor(instanceId?: string) {
@@ -76,25 +74,19 @@ export class ArchitectAgent extends BaseAgent {
   }
 
   /**
-   * Get or create the LLM client (lazy initialization for auth-profiles support).
-   */
-  private async getLLMClient(): Promise<AnthropicClient> {
-    if (!this.llm) {
-      this.llm = await createLLM();
-    }
-    return this.llm;
-  }
-
-  /**
    * Load the architect system prompt.
    */
   private async getSystemPrompt(): Promise<string> {
     if (!this.systemPrompt) {
-      const llm = await this.getLLMClient();
-      this.systemPrompt = await llm.loadSystemPrompt("architect");
-      if (!this.systemPrompt) {
-        throw new Error("Failed to load architect system prompt");
-      }
+      // TODO: Load from prompts directory
+      this.systemPrompt = `You are an expert Software Architect agent. Your job is to:
+1. Analyze epic specifications from the PM
+2. Create detailed technical specifications
+3. Break down work into implementable tasks
+4. Define clear interfaces and component boundaries
+5. Make and document architectural decisions
+
+Focus on clean architecture, testability, and maintainability.`;
     }
     return this.systemPrompt;
   }
@@ -275,7 +267,7 @@ ${task.estimated_complexity}
     tasks: TaskSpec[];
   }> {
     const systemPrompt = await this.getSystemPrompt();
-    const llm = await this.getLLMClient();
+    const llm = this.getLLM();
 
     // Build the user prompt
     const userPrompt = `Analyze the following epic specification and generate a technical specification with task breakdown.
