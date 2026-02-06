@@ -45,40 +45,45 @@ const DEFAULT_CONFIG: OrchestratorWorkersConfig = {
     thinking: "medium",
   },
   roles: {
-    // Planning roles - need strong reasoning
+    // Planning - Opus 4.6 for strong reasoning
     pm: {
-      model: "anthropic/claude-sonnet-4-5",
+      model: "anthropic/claude-opus-4-6",
       thinking: "high",
     },
+    // Domain expert - Sonnet
     "domain-expert": {
       model: "anthropic/claude-sonnet-4-5",
       thinking: "high",
     },
+    // Architect - Codex for technical design
     architect: {
-      model: "anthropic/claude-sonnet-4-5",
-      thinking: "high",
+      model: "openai-codex/gpt-5.3-codex",
+      maxTokens: 16384,
     },
-    // Review roles - need careful analysis
+    // CTO Review - Opus 4.6 for deep analysis
     "cto-review": {
-      model: "anthropic/claude-sonnet-4-5",
+      model: "anthropic/claude-opus-4-6",
       thinking: "high",
     },
+    // Staff Engineer - Codex 5.3
     "staff-engineer": {
-      model: "anthropic/claude-sonnet-4-5",
-      thinking: "high",
+      model: "openai-codex/gpt-5.3-codex",
     },
-    // Implementation roles - Codex for code
+    // Senior Dev - Codex 5.3
     "senior-dev": {
       model: "openai-codex/gpt-5.3-codex",
       maxTokens: 16384,
     },
+    // Code Simplifier - Opus 4.6 for catching AI slop
     "code-simplifier": {
-      model: "openai-codex/gpt-5.3-codex",
+      model: "anthropic/claude-opus-4-6",
+      thinking: "high",
     },
-    // CI/UI - lighter weight
+    // CI Agent - Codex 5.3
     "ci-agent": {
       model: "openai-codex/gpt-5.3-codex",
     },
+    // UI Review - Haiku for speed
     "ui-review": {
       model: "anthropic/claude-haiku-4-5",
     },
