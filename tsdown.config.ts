@@ -18,7 +18,12 @@ export default defineConfig([
     platform: "node",
   },
   {
-    dts: true,
+    entry: "src/infra/warning-filter.ts",
+    env,
+    fixedExtension: false,
+    platform: "node",
+  },
+  {
     entry: "src/plugin-sdk/index.ts",
     outDir: "dist/plugin-sdk",
     env,
@@ -32,15 +37,7 @@ export default defineConfig([
     platform: "node",
   },
   {
-    entry: "src/agents/agent-runner.ts",
-    outDir: "dist/agents",
-    env,
-    fixedExtension: false,
-    platform: "node",
-  },
-  {
-    entry: "src/orchestrator/index.ts",
-    outDir: "dist/orchestrator",
+    entry: ["src/hooks/bundled/*/handler.ts", "src/hooks/llm-slug-generator.ts"],
     env,
     fixedExtension: false,
     platform: "node",
