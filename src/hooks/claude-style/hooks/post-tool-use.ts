@@ -113,12 +113,6 @@ export async function runPostToolUseHooks(input: PostToolUseHookInput): Promise<
 
   // Run all hooks in parallel (fire-and-forget)
   const promises = handlers.map(async (handler) => {
-    // Only command handlers supported currently
-    if (handler.type !== "command") {
-      log.debug(`Skipping unsupported handler type: ${handler.type}`);
-      return;
-    }
-
     try {
       const result = await runClaudeHook(handler, hookInput);
 
@@ -183,12 +177,6 @@ export async function runPostToolUseFailureHooks(
 
   // Run all hooks in parallel (fire-and-forget)
   const promises = handlers.map(async (handler) => {
-    // Only command handlers supported currently
-    if (handler.type !== "command") {
-      log.debug(`Skipping unsupported handler type: ${handler.type}`);
-      return;
-    }
-
     try {
       const result = await runClaudeHook(handler, hookInput);
 

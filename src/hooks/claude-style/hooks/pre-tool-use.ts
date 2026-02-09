@@ -125,12 +125,6 @@ export async function runPreToolUseHooks(
 
   // Run each handler in order (first deny wins, params accumulate)
   for (const handler of handlers) {
-    // Only command handlers supported currently
-    if (handler.type !== "command") {
-      log.debug(`Skipping unsupported handler type: ${handler.type}`);
-      continue;
-    }
-
     const result = await runClaudeHook(handler, hookInput);
 
     // Handle different result types

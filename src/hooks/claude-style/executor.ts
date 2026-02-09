@@ -9,7 +9,14 @@
 
 import { execFile } from "node:child_process";
 import { parse as parseShellQuote } from "shell-quote";
-import type { ClaudeHookCommandHandler, ClaudeHookInput, ClaudeHookOutput } from "./types.js";
+import type {
+  ClaudeHookCommandHandler,
+  ClaudeHookPromptHandler,
+  ClaudeHookHandler,
+  ClaudeHookInput,
+  ClaudeHookOutput,
+} from "./types.js";
+import { createMultiProviderLLM } from "../../llm/multi-provider.js";
 
 // =============================================================================
 // Types
@@ -142,9 +149,18 @@ export function parseCommand(command: string | string[]): { argv: string[] } | {
 /**
  * Generate a unique handler ID for circuit breaker tracking.
  */
-export function getHandlerId(handler: ClaudeHookCommandHandler): string {
-  const cmd = Array.isArray(handler.command) ? handler.command.join(" ") : handler.command;
-  return `command:${cmd}`;
+export function getHandlerId(handler: ClaudeHookHandler): string {
+  if (handler.type === "command") {
+    const cmd = Array.isArray(handler.command) ? handler.command.join(" ") : handler.command;
+    return `command:${cmd}`;
+  }
+  if (handler.type === "prompt") {
+    return `prompt:${handler.prompt.slice(0, 50)}`;
+  }
+  if (handler.type === "agent") {
+    return `agent:${handler.agent}`;
+  }
+  return `unknown:${JSON.stringify(handler)}`;
 }
 
 /**
@@ -266,12 +282,121 @@ export async function runCommandHook(
 }
 
 /**
- * Run a Claude hook (currently only command handlers supported).
- * Prompt and agent handlers will be implemented in future tasks.
+ * Run a prompt hook handler using an LLM.
+ *
+ * @param handler - The prompt handler to execute
+ * @param input - The hook input context
+ * @returns The result of the hook execution
  */
-export async function runClaudeHook(
-  handler: ClaudeHookCommandHandler,
+export async function runPromptHook(
+  handler: ClaudeHookPromptHandler,
   input: ClaudeHookInput,
 ): Promise<CommandHookResult> {
-  return runCommandHook(handler, input);
+  const handlerId = getHandlerId(handler);
+
+  // Check circuit breaker
+  if (isDisabled(handlerId)) {
+    return {
+      error: true,
+      message: `Hook disabled after ${MAX_CONSECUTIVE_FAILURES} consecutive failures`,
+    };
+  }
+
+  const timeoutMs = (handler.timeout ?? DEFAULT_TIMEOUTS.prompt) * 1000;
+
+  try {
+    // Create LLM client with optional model override
+    const llm = createMultiProviderLLM({
+      model: handler.model ?? "anthropic/claude-haiku-4-5",
+      maxTokens: 500,
+      temperature: 0,
+    });
+
+    // Build the prompt with context
+    const systemPrompt = `You are a hook handler for an AI agent system. Your job is to evaluate tool usage and return a decision.
+
+You must respond with valid JSON in this exact format:
+{
+  "decision": "allow" | "deny" | "ask",
+  "reason": "optional explanation",
+  "updatedInput": {} // optional modified tool parameters
+}
+
+Rules:
+- "allow": Proceed with the tool call
+- "deny": Block the tool call (provide reason)
+- "ask": Prompt for user confirmation
+- Keep responses concise and focused`;
+
+    const userPrompt = `${handler.prompt}
+
+Hook Context:
+- Event: ${input.hook_event_name}
+- Tool: ${"tool_name" in input ? input.tool_name : "N/A"}
+- Tool Input: ${JSON.stringify("tool_input" in input ? input.tool_input : {}, null, 2)}
+
+Respond with JSON only.`;
+
+    // Call LLM with timeout
+    const llmPromise = llm.chat([
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ]);
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("Timeout")), timeoutMs);
+    });
+
+    const response = await Promise.race([llmPromise, timeoutPromise]);
+
+    // Parse the response as JSON
+    try {
+      // Extract JSON from markdown code blocks if present
+      let jsonText = response.content.trim();
+      const codeBlockMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (codeBlockMatch) {
+        jsonText = codeBlockMatch[1].trim();
+      }
+
+      const output = JSON.parse(jsonText) as ClaudeHookOutput;
+      recordSuccess(handlerId);
+      return { success: true, output };
+    } catch (parseError) {
+      const wasDisabled = recordFailure(handlerId);
+      const message = wasDisabled
+        ? `Invalid JSON from LLM (disabled after ${MAX_CONSECUTIVE_FAILURES} failures): ${response.content}`
+        : `Invalid JSON from LLM: ${response.content}`;
+      return { error: true, message };
+    }
+  } catch (error) {
+    const wasDisabled = recordFailure(handlerId);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    const message = wasDisabled
+      ? `Prompt hook failed (disabled after ${MAX_CONSECUTIVE_FAILURES} failures): ${errorMsg}`
+      : `Prompt hook failed: ${errorMsg}`;
+    return { error: true, message };
+  }
+}
+
+/**
+ * Run a Claude hook with support for command, prompt, and agent handlers.
+ */
+export async function runClaudeHook(
+  handler: ClaudeHookHandler,
+  input: ClaudeHookInput,
+): Promise<CommandHookResult> {
+  switch (handler.type) {
+    case "command":
+      return runCommandHook(handler, input);
+    case "prompt":
+      return runPromptHook(handler, input);
+    case "agent":
+      // Agent handlers not yet implemented - treat as error
+      return { error: true, message: "Agent handlers not yet implemented" };
+    default:
+      return {
+        error: true,
+        message: `Unknown handler type: ${(handler as { type: string }).type}`,
+      };
+  }
 }

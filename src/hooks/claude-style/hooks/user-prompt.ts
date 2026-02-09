@@ -124,6 +124,7 @@ export async function runUserPromptSubmitHooks(
 
     if ("success" in result && result.success) {
       const output = result.output;
+      console.error(`[DEBUG] UserPromptSubmit hook output:`, JSON.stringify(output));
 
       // Check explicit decision
       if (output.decision === "deny") {
